@@ -1,0 +1,18 @@
+# Setup repository.
+$ exec git init
+$ exec git config user.email "email"
+$ exec git config user.name "name"
+$ exec git add .gitignore
+$ exec git add .
+$ exec git commit -m 'initial commit'
+$ exec git tag v0.0.1
+# build buf image
+$ pause
+> publishLocal
+# assert buf files were created
+$ exec test -f src/main/protobuf/buf.yaml
+$ exec test -f target/protobuf_external/buf.yaml
+$ exec test -f target/protobuf_external_src/buf.yaml
+$ exec test -f buf.work.yaml
+
+
