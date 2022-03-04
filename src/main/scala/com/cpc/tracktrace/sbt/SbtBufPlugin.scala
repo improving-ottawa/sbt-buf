@@ -8,6 +8,8 @@ import sbtprotoc.ProtocPlugin
 import sbtprotoc.ProtocPlugin.autoImport.PB
 
 import java.io.File
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.{Future, blocking}
 
 object SbtBufPlugin extends AutoPlugin {
 
@@ -17,20 +19,22 @@ object SbtBufPlugin extends AutoPlugin {
   object autoImport {
     object Buf {
       val BufImageArtifactType = "buf-image"
-      val BufImageArtifactExt = "bin"
       val BufImageArtifactClassifier = "buf"
       // create buf image, publish buf image
       val generateBufImage = taskKey[File]("Generate buf image from proto definitions in this project")
       val bufImageArtifact = settingKey[Boolean]("Whether the generated buf image should be added to the project as an artifact.  Will have the effect of publishing the artifact with publish or publishLocal tasks.")
       val bufArtifactDefinition = settingKey[Artifact]("Artifact definition for bug image artifact")
       val bufImageDir = settingKey[File]("Target directory in which Buf image is generated")
+      val bufImageExt = settingKey[String]("Format for Buf generate and published artifacts")
       val generateBufFiles = taskKey[Unit]("Generate Buf files in each of the 'modules' managed by ScalaPB")
 
       // against
       val bufAgainstImageDir = settingKey[File]("Target directory in which Buf against target image is downloaded to")
-      val bufAgainstImage = taskKey[File]("Location of the Buf image to use as the against target in compatibility checks")
+      val bufAgainstImage = settingKey[File]("Location of the Buf image to use as the against target in compatibility checks")
       val bufAgainstVersion = settingKey[String]("Version of Buf image to resolve for against target")
       val bufAgainstDependency = settingKey[ModuleID]("Dependency to resolve the Buf image for the against target")
+      val bufFetchAgainstTarget = taskKey[File]("Fetches against target image as an aritfact, using bufAgainstVersion")
+      val bufCompatCheck = taskKey[Unit]("Task that runs the Buf compatibility check.  Accepts the version string to resolve the dependency")
 
       val breakingCategory = settingKey[String]("Breaking category")
     }
@@ -49,12 +53,19 @@ object SbtBufPlugin extends AutoPlugin {
   final case class WorkspaceConfig(directories: Seq[String], version: String = "v1")
   implicit val workspaceEncoder = deriveEncoder[WorkspaceConfig]
 
+  lazy val bufBreakingPlugin = PB.gens.plugin(
+    "buf_breaking",
+    path="/usr/local/bin/protoc-gen-buf-breaking"
+  )
+
   override lazy val projectSettings = Seq(
     bufImageArtifact := true,
-    bufArtifactDefinition := Artifact(artifact.value.name, BufImageArtifactType, "bin", Some(BufImageArtifactClassifier), Vector.empty, None),
-    bufAgainstVersion := "invalid",
-    bufAgainstDependency := ModuleID(organization.value, artifact.value.name, bufAgainstVersion.value) artifacts bufArtifactDefinition.value,
+    bufArtifactDefinition := Artifact(artifact.value.name, BufImageArtifactType, bufImageExt.value, Some(BufImageArtifactClassifier), Vector.empty, None),
+
     bufImageDir := (Compile / target).value / "buf",
+    bufImageExt := "bin",
+    bufAgainstVersion := "invalid",
+    bufAgainstDependency := (organization.value %% artifact.value.name % bufAgainstVersion.value) artifacts bufArtifactDefinition.value,
     bufAgainstImageDir := (Compile / target).value / "buf-against",
     breakingCategory := "FILE",
     generateBufFiles := {
@@ -89,13 +100,13 @@ object SbtBufPlugin extends AutoPlugin {
       if (!imageDirFile.exists()) {
         IO.createDirectory(imageDirFile)
       }
-      val image: File = imageDirFile / "buf-image.bin"
+      val image: File = imageDirFile / s"buf-image.${bufImageExt.value}"
 
       val log = streams.value.log
       import scala.sys.process._
       log.info(s"Building Buf image to ${image.getAbsolutePath}...")
       // TODO:  clean up into a nicer Process
-      val result = s"buf build src/main/protobuf -o ${image.getAbsolutePath}" ! streams.value.log
+      val result = s"buf build ./ -o ${image.getAbsolutePath}" ! streams.value.log
       if (result != 0) {
         log.error(s"Unexpected exit code from Buf build: ${result}")
         throw new IllegalStateException("Buf build failed")
@@ -111,7 +122,78 @@ object SbtBufPlugin extends AutoPlugin {
       if (bufImageArtifact.value)
         artifacts.value :+ bufArtifactDefinition.value
       else artifacts.value
-    }
+    },
+
+    // fetch image tasks
+//    bufCompatCheck := {
+//      import complete.DefaultParsers._
+//      val version = spaceDelimited("<arg>").parsed.head
+//      bufAgainstVersion := version
+//      bufFetchAgainstTarget.value
+//
+//    },
+    bufFetchAgainstTarget := {
+      val log = streams.value.log
+
+      val lm  = (Compile / dependencyResolution).value
+
+      def downloadArtifact(targetDirectory: File, moduleId: ModuleID): Future[File] = {
+        log.info("Fetching Buf against target image")
+        Future {
+          blocking {
+            lm.retrieve(
+              moduleId,
+              None,
+              targetDirectory,
+              log
+            ).fold({ w =>
+              throw w.resolveException }, { files =>
+              // is this sufficient? better test a dependent module
+              files.find(_.getPath.endsWith(s".${bufImageExt.value}")).getOrElse(throw new IllegalStateException(s"Could not find expected Buf image against target from ${moduleId}"))
+            })
+          }
+        }
+      }
+      def cacheKey(moduleId: ModuleID): String = {
+        val classifier = moduleId.explicitArtifacts.headOption.flatMap(_.classifier).getOrElse("")
+        s"${moduleId.name}-$classifier-${moduleId.revision}.${bufImageExt.value}"
+      }
+
+      val outdir = bufAgainstImageDir.value
+      IO.createDirectory(outdir)
+      val cache = new protocbridge.FileCache[ModuleID](
+        outdir,
+        downloadArtifact,
+        cacheKey
+      )
+
+      scala.concurrent.Await.result(
+        cache.get(bufAgainstDependency.value),
+        scala.concurrent.duration.Duration.Inf
+      )
+    },
+    bufCompatCheck := {
+      generateBufFiles.value
+      val bufAgainstTarget = bufFetchAgainstTarget.value
+      val currentImage = generateBufImage.value
+
+      val log = streams.value.log
+      import scala.sys.process._
+      log.info(s"Running Buf breaking change detector against ${bufAgainstTarget.getAbsolutePath}...")
+      // TODO:  clean up into a nicer Process
+      val result = s"buf breaking --against ${bufAgainstTarget.getAbsolutePath} ${currentImage.getAbsolutePath}" ! streams.value.log
+      if (result != 0) {
+        log.error(s"Unexpected exit code from Buf breaking: ${result}")
+        throw new IllegalStateException("Buf breaking change detector failed")
+      }
+    },
+    //PB.generate := PB.generate.dependsOn(bufFetchAgainstTarget).value,
+//    Compile / PB.targets := {
+//      val bufParams = """{"against_input": "target/", "limit_to_input_files": true, "log_level": "debug"}"""
+//      Seq(
+//        (bufBreakingPlugin, Seq(s"${bufParams}")) -> (ThisBuild/ baseDirectory).value / "buf-output",
+//      )
+//    }
   )
 
   override lazy val buildSettings = Seq()
