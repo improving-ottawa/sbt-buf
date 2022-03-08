@@ -2,12 +2,13 @@ package com.cpc.tracktrace.sbt
 
 
 import sbt.Keys.*
+import sbt.internal.util.ManagedLogger
+import sbt.librarymanagement.DependencyResolution
 import sbt.plugins.JvmPlugin
-import sbt.{Artifact, AutoPlugin, Compile, File, ModuleID, SettingsDefinition, file, settingKey, taskKey, io as sbtIo, *}
+import sbt.{Artifact, AutoPlugin, Compile, File, ModuleID, file, settingKey, taskKey, io as sbtIo, *}
 import sbtprotoc.ProtocPlugin
 import sbtprotoc.ProtocPlugin.autoImport.PB
 
-import java.io.File
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, blocking}
 
@@ -34,7 +35,7 @@ object SbtBufPlugin extends AutoPlugin {
       val bufAgainstVersion = settingKey[String]("Version of Buf image to resolve for against target")
       val bufAgainstDependency = settingKey[ModuleID]("Dependency to resolve the Buf image for the against target")
       val bufFetchAgainstTarget = taskKey[File]("Fetches against target image as an aritfact, using bufAgainstVersion")
-      val bufCompatCheck = taskKey[Unit]("Task that runs the Buf compatibility check.  Accepts the version string to resolve the dependency")
+      val bufCompatCheck = inputKey[Unit]("Task that runs the Buf compatibility check.  Accepts the version string to resolve the dependency")
 
       val breakingCategory = settingKey[String]("Breaking category")
     }
@@ -42,38 +43,113 @@ object SbtBufPlugin extends AutoPlugin {
 
   import autoImport.Buf.*
 
-  import io.circe.generic.semiauto.deriveEncoder
-  final case class Use(use: Seq[String])
-  implicit val useEncoder = deriveEncoder[Use]
-  final case class ModuleConfig(breaking: Use, version: String = "v1")
-  implicit val moduleConfigEncoder = deriveEncoder[ModuleConfig]
-  object ModuleConfig {
-    def apply(breakingCategory: String): ModuleConfig = ModuleConfig(Use(List(breakingCategory)))
-  }
-  final case class WorkspaceConfig(directories: Seq[String], version: String = "v1")
-  implicit val workspaceEncoder = deriveEncoder[WorkspaceConfig]
-
   lazy val bufBreakingPlugin = PB.gens.plugin(
     "buf_breaking",
     path="/usr/local/bin/protoc-gen-buf-breaking"
   )
 
+//  def runMainParser: (State, Seq[String]) => Parser[(String, Seq[String])] = {
+//    import DefaultParsers._
+//    (state, mainClasses) =>
+//      Space ~> token(NotSpace examples mainClasses.toSet) ~ spaceDelimited("<arg>")
+//  }
+//  def runMainTask(
+//                   classpath: Initialize[Task[Classpath]],
+//                   scalaRun: Initialize[Task[ScalaRun]]
+//                 ): Initialize[InputTask[Unit]] = {
+//    val parser =
+//      loadForParser(discoveredMainClasses)((s, names) => runMainParser(s, names getOrElse Nil))
+//    Def.inputTask {
+//      val (mainClass, args) = parser.parsed
+//      scalaRun.value.run(mainClass, data(classpath.value), args, streams.value.log).get
+//    }
+//  }
+  private def fetchAgainstTarget(againstArtifactModule: ModuleID, log: ManagedLogger, lm: DependencyResolution, targetDir: File): File = {
+
+    val formatExtension = againstArtifactModule.explicitArtifacts.head.extension
+    def downloadArtifact(targetDirectory: File, moduleId: ModuleID): Future[File] = {
+      log.info(s"Fetching Buf against target image: ${moduleId}")
+      Future {
+        blocking {
+          lm.retrieve(
+            moduleId,
+            None,
+            targetDirectory,
+            log
+          ).fold({ w =>
+            throw w.resolveException }, { files =>
+            // is this sufficient? better test a dependent module
+            files.find(_.getPath.endsWith(s".${formatExtension}")).getOrElse(throw new IllegalStateException(s"Could not find expected Buf image against target from ${moduleId}"))
+          })
+        }
+      }
+    }
+    def cacheKey(moduleId: ModuleID): String = {
+      val classifier = moduleId.explicitArtifacts.headOption.flatMap(_.classifier).getOrElse("")
+      s"${moduleId.name}-$classifier-${moduleId.revision}.${formatExtension}"
+    }
+
+    IO.createDirectory(targetDir)
+    val cache = new protocbridge.FileCache[ModuleID](
+      targetDir,
+      downloadArtifact,
+      cacheKey
+    )
+
+    scala.concurrent.Await.result(
+      cache.get(againstArtifactModule),
+      scala.concurrent.duration.Duration.Inf
+    )
+  }
+
+  //fetchAgTarget: String => Def.Initialize[Task[File]]
+
+  private def runBufCompatCheck(): Def.Initialize[InputTask[Unit]] = {
+    import complete.DefaultParsers.*
+    val parser = spaceDelimited("<arg>")
+    println("what the hell man")
+    Def.inputTask {
+      val log = streams.value.log
+      val againstArtifactVersion = parser.parsed.headOption.getOrElse(throw new IllegalStateException("No Buf against target artifact version provided"))
+      log.debug(s"Using $againstArtifactVersion for against artifact version in Buf breaking change detection")
+      val lm = (Compile/dependencyResolution).value
+
+      val againstModule = (organization.value %% artifact.value.name % againstArtifactVersion) artifacts bufArtifactDefinition.value
+      val outdir = bufAgainstImageDir.value
+
+      val againstImage = fetchAgainstTarget(againstModule, log, lm, outdir)
+
+      generateBufFiles.value
+      val currentImage = generateBufImage.value
+
+      import scala.sys.process.*
+      log.info(s"Running Buf breaking change detector against ${againstImage.getAbsolutePath}...")
+      // TODO:  clean up into a nicer Process
+      val result = s"buf breaking --against ${againstImage.getAbsolutePath} ${currentImage.getAbsolutePath}" ! streams.value.log
+      if (result != 0) {
+        log.error(s"Unexpected exit code from Buf breaking: ${result}")
+        throw new IllegalStateException("Buf breaking change detector failed")
+      }
+    }
+  }
+
   override lazy val projectSettings = Seq(
     bufImageArtifact := true,
     bufArtifactDefinition := Artifact(artifact.value.name, BufImageArtifactType, bufImageExt.value, Some(BufImageArtifactClassifier), Vector.empty, None),
-
     bufImageDir := (Compile / target).value / "buf",
     bufImageExt := "bin",
     bufAgainstVersion := "invalid",
     bufAgainstDependency := (organization.value %% artifact.value.name % bufAgainstVersion.value) artifacts bufArtifactDefinition.value,
     bufAgainstImageDir := (Compile / target).value / "buf-against",
+    //bufFetchAgainstTarget := fetchAgainstTarget("bullshit").value,
     breakingCategory := "FILE",
     generateBufFiles := {
       (Compile / PB.generate).value
       val srcModuleDirs = (Compile / PB.includePaths).value.map(_.getPath).map(file).filter(d => d.isDirectory && d.list().nonEmpty)
       val cat = breakingCategory.value
       val log = streams.value.log
-      import io.circe.syntax.EncoderOps, io.circe.yaml.syntax._
+      import io.circe.syntax.EncoderOps
+      import io.circe.yaml.syntax.*
       srcModuleDirs.map(_ / "buf.yaml").foreach {
         case bufModFile if !bufModFile.exists() =>
           log.info(s"Writing buf module file to ${bufModFile.getAbsolutePath}")
@@ -103,7 +179,7 @@ object SbtBufPlugin extends AutoPlugin {
       val image: File = imageDirFile / s"buf-image.${bufImageExt.value}"
 
       val log = streams.value.log
-      import scala.sys.process._
+      import scala.sys.process.*
       log.info(s"Building Buf image to ${image.getAbsolutePath}...")
       // TODO:  clean up into a nicer Process
       val result = s"buf build ./ -o ${image.getAbsolutePath}" ! streams.value.log
@@ -123,70 +199,8 @@ object SbtBufPlugin extends AutoPlugin {
         artifacts.value :+ bufArtifactDefinition.value
       else artifacts.value
     },
-
-    // fetch image tasks
-//    bufCompatCheck := {
-//      import complete.DefaultParsers._
-//      val version = spaceDelimited("<arg>").parsed.head
-//      bufAgainstVersion := version
-//      bufFetchAgainstTarget.value
-//
-//    },
-    bufFetchAgainstTarget := {
-      val log = streams.value.log
-
-      val lm  = (Compile / dependencyResolution).value
-
-      def downloadArtifact(targetDirectory: File, moduleId: ModuleID): Future[File] = {
-        log.info("Fetching Buf against target image")
-        Future {
-          blocking {
-            lm.retrieve(
-              moduleId,
-              None,
-              targetDirectory,
-              log
-            ).fold({ w =>
-              throw w.resolveException }, { files =>
-              // is this sufficient? better test a dependent module
-              files.find(_.getPath.endsWith(s".${bufImageExt.value}")).getOrElse(throw new IllegalStateException(s"Could not find expected Buf image against target from ${moduleId}"))
-            })
-          }
-        }
-      }
-      def cacheKey(moduleId: ModuleID): String = {
-        val classifier = moduleId.explicitArtifacts.headOption.flatMap(_.classifier).getOrElse("")
-        s"${moduleId.name}-$classifier-${moduleId.revision}.${bufImageExt.value}"
-      }
-
-      val outdir = bufAgainstImageDir.value
-      IO.createDirectory(outdir)
-      val cache = new protocbridge.FileCache[ModuleID](
-        outdir,
-        downloadArtifact,
-        cacheKey
-      )
-
-      scala.concurrent.Await.result(
-        cache.get(bufAgainstDependency.value),
-        scala.concurrent.duration.Duration.Inf
-      )
-    },
-    bufCompatCheck := {
-      generateBufFiles.value
-      val bufAgainstTarget = bufFetchAgainstTarget.value
-      val currentImage = generateBufImage.value
-
-      val log = streams.value.log
-      import scala.sys.process._
-      log.info(s"Running Buf breaking change detector against ${bufAgainstTarget.getAbsolutePath}...")
-      // TODO:  clean up into a nicer Process
-      val result = s"buf breaking --against ${bufAgainstTarget.getAbsolutePath} ${currentImage.getAbsolutePath}" ! streams.value.log
-      if (result != 0) {
-        log.error(s"Unexpected exit code from Buf breaking: ${result}")
-        throw new IllegalStateException("Buf breaking change detector failed")
-      }
-    },
+//    bufFetchAgainstTarget := fetchAgainstTarget(bufCompatCheck.evaluated),
+    bufCompatCheck := runBufCompatCheck().evaluated
     //PB.generate := PB.generate.dependsOn(bufFetchAgainstTarget).value,
 //    Compile / PB.targets := {
 //      val bufParams = """{"against_input": "target/", "limit_to_input_files": true, "log_level": "debug"}"""

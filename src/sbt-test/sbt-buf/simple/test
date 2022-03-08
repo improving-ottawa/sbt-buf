@@ -6,7 +6,6 @@ $ exec git add .gitignore
 $ exec git add .
 $ exec git commit -m 'initial commit'
 # build buf image
-$ pause
 # version published at 0.0.1-SNAPSHOT
 > publishLocal
 # assert buf files were created
@@ -18,6 +17,6 @@ $ exec test -f target/buf/buf-image.bin
 #$ exec test -f ~/.ivy2/local/testsbtbufhappypath/testsbtbufhappypath_2.13/0.0.1-SNAPSHOT/buf-images/testsbtbufhappypath_2.13-buf.bin
 # make some changes to the proto messages
 $ exec sed -i'' 's/string anotherValue/google.protobuf.StringValue anotherValue/g' src/main/protobuf/pkg/test.proto
-~> bufCompatCheck
+-> bufCompatCheck 0.0.1
 $ exec sed -i'' 's/version := "0.0.1-SNAPSHOT"/version := "0.0.1"/g' build.sbt
 
