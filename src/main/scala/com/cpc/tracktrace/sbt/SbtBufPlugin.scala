@@ -42,28 +42,11 @@ object SbtBufPlugin extends AutoPlugin {
   }
 
   import autoImport.Buf.*
+//  lazy val bufBreakingPlugin = PB.gens.plugin(
+//    "buf_breaking",
+//    path="/usr/local/bin/protoc-gen-buf-breaking"
+//  )
 
-  lazy val bufBreakingPlugin = PB.gens.plugin(
-    "buf_breaking",
-    path="/usr/local/bin/protoc-gen-buf-breaking"
-  )
-
-//  def runMainParser: (State, Seq[String]) => Parser[(String, Seq[String])] = {
-//    import DefaultParsers._
-//    (state, mainClasses) =>
-//      Space ~> token(NotSpace examples mainClasses.toSet) ~ spaceDelimited("<arg>")
-//  }
-//  def runMainTask(
-//                   classpath: Initialize[Task[Classpath]],
-//                   scalaRun: Initialize[Task[ScalaRun]]
-//                 ): Initialize[InputTask[Unit]] = {
-//    val parser =
-//      loadForParser(discoveredMainClasses)((s, names) => runMainParser(s, names getOrElse Nil))
-//    Def.inputTask {
-//      val (mainClass, args) = parser.parsed
-//      scalaRun.value.run(mainClass, data(classpath.value), args, streams.value.log).get
-//    }
-//  }
   private def fetchAgainstTarget(againstArtifactModule: ModuleID, log: ManagedLogger, lm: DependencyResolution, targetDir: File): File = {
 
     val formatExtension = againstArtifactModule.explicitArtifacts.head.extension

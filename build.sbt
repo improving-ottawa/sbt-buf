@@ -1,26 +1,22 @@
-
-name := """sbt-buf"""
-organization := "com.cpc.tracktrace"
-version := "0.1-SNAPSHOT"
+import sbt.Keys.organization
 
 sbtPlugin := true
 
-// choose a test framework
-
-// ScalaTest
-libraryDependencies += "org.scalactic" %% "scalactic" % "3.2.9" % "test"
-libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % "test"
 val CirceVersion = "0.14.1"
 inThisBuild(List(
-  organization := "com.cpc.tracktrace",
+  name := """sbt-buf""",
+  organization := "com.yoppworks",
+  version := "0.1-SNAPSHOT",
   homepage := Some(url("https://github.com/sbt/sbt-autoplugin.g8")),
   licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
   addSbtPlugin("com.thesamet" % "sbt-protoc" % "1.0.0"),
   libraryDependencies ++= Seq(
-    "com.thesamet.scalapb" %% "compilerplugin" % "0.11.8",
+    "com.thesamet.scalapb" %% "compilerplugin" % "0.11.9",
     "io.circe" %% "circe-core" % CirceVersion,
     "io.circe" %% "circe-generic" % CirceVersion,
-    "io.circe" %% "circe-yaml" % CirceVersion
+    "io.circe" %% "circe-yaml" % CirceVersion,
+    "org.scalactic" %% "scalactic" % "3.2.9" % Test,
+    "org.scalatest" %% "scalatest" % "3.2.9" % Test
   ),
   developers := List(
     Developer(
