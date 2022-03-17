@@ -32,9 +32,7 @@ object SbtBufPlugin extends AutoPlugin {
       // against
       val bufAgainstImageDir = settingKey[File]("Target directory in which Buf against target image is downloaded to")
       val bufAgainstImage = settingKey[File]("Location of the Buf image to use as the against target in compatibility checks")
-      val bufAgainstVersion = settingKey[String]("Version of Buf image to resolve for against target")
-      val bufAgainstDependency = settingKey[ModuleID]("Dependency to resolve the Buf image for the against target")
-      val bufFetchAgainstTarget = taskKey[File]("Fetches against target image as an aritfact, using bufAgainstVersion")
+      val bufFetchAgainstTarget = taskKey[File]("Fetches against target image as an artifact, using bufAgainstVersion")
       val bufCompatCheck = inputKey[Unit]("Task that runs the Buf compatibility check.  Accepts the version string to resolve the dependency")
 
       val breakingCategory = settingKey[String]("Breaking category")
@@ -42,10 +40,6 @@ object SbtBufPlugin extends AutoPlugin {
   }
 
   import autoImport.Buf.*
-//  lazy val bufBreakingPlugin = PB.gens.plugin(
-//    "buf_breaking",
-//    path="/usr/local/bin/protoc-gen-buf-breaking"
-//  )
 
   private def fetchAgainstTarget(againstArtifactModule: ModuleID, log: ManagedLogger, lm: DependencyResolution, targetDir: File): File = {
 
@@ -85,8 +79,6 @@ object SbtBufPlugin extends AutoPlugin {
     )
   }
 
-  //fetchAgTarget: String => Def.Initialize[Task[File]]
-
   private def runBufCompatCheck(): Def.Initialize[InputTask[Unit]] = {
     import complete.DefaultParsers.*
     val parser = spaceDelimited("<arg>")
@@ -121,10 +113,7 @@ object SbtBufPlugin extends AutoPlugin {
     bufArtifactDefinition := Artifact(artifact.value.name, BufImageArtifactType, bufImageExt.value, Some(BufImageArtifactClassifier), Vector.empty, None),
     bufImageDir := (Compile / target).value / "buf",
     bufImageExt := "bin",
-    bufAgainstVersion := "invalid",
-    bufAgainstDependency := (organization.value %% artifact.value.name % bufAgainstVersion.value) artifacts bufArtifactDefinition.value,
     bufAgainstImageDir := (Compile / target).value / "buf-against",
-    //bufFetchAgainstTarget := fetchAgainstTarget("bullshit").value,
     breakingCategory := "FILE",
     generateBufFiles := {
       (Compile / PB.generate).value
