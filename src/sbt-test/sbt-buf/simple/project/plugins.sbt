@@ -3,7 +3,7 @@
   if(pluginVersion == null)
     throw new RuntimeException("""|The system property 'plugin.version' is not defined.
                                   |Specify this property using the scriptedLaunchOpts -D.""".stripMargin)
-  else addSbtPlugin("com.cpc.tracktrace" % """sbt-buf""" % pluginVersion)
+  else addSbtPlugin("com.yoppworks" % """sbt-buf""" % pluginVersion)
 }
 addSbtPlugin("com.thesamet" % "sbt-protoc" % "1.0.4")
 libraryDependencies ++= Seq(

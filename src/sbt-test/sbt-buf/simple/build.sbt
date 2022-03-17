@@ -3,7 +3,6 @@
 version := "0.0.1-SNAPSHOT"
 scalaVersion := "2.13.7"
 name := "TestSbtBufHappyPath"
-Buf.bufAgainstVersion := "0.0.1-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   "com.thesamet.scalapb" %% "scalapb-runtime" % scalapb.compiler.Version.scalapbVersion % "protobuf",

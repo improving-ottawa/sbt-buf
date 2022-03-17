@@ -35,7 +35,9 @@ object SbtBufPlugin extends AutoPlugin {
       val bufFetchAgainstTarget = taskKey[File]("Fetches against target image as an artifact, using bufAgainstVersion")
       val bufCompatCheck = inputKey[Unit]("Task that runs the Buf compatibility check.  Accepts the version string to resolve the dependency")
 
-      val breakingCategory = settingKey[String]("Breaking category")
+      val bufLint = inputKey[Unit]("Run buf lint command against current working directory or a specified published image artifact version")
+
+      val breakingCategory = settingKey[BreakingUse]("Breaking category")
     }
   }
 
@@ -82,7 +84,6 @@ object SbtBufPlugin extends AutoPlugin {
   private def runBufCompatCheck(): Def.Initialize[InputTask[Unit]] = {
     import complete.DefaultParsers.*
     val parser = spaceDelimited("<arg>")
-    println("what the hell man")
     Def.inputTask {
       val log = streams.value.log
       val againstArtifactVersion = parser.parsed.headOption.getOrElse(throw new IllegalStateException("No Buf against target artifact version provided"))
@@ -90,35 +91,73 @@ object SbtBufPlugin extends AutoPlugin {
       val lm = (Compile/dependencyResolution).value
 
       val againstModule = (organization.value %% artifact.value.name % againstArtifactVersion) artifacts bufArtifactDefinition.value
-      val outdir = bufAgainstImageDir.value
+      val outdir = bufAgainstImageDir.value / "compat"
 
       val againstImage = fetchAgainstTarget(againstModule, log, lm, outdir)
 
-      generateBufFiles.value
       val currentImage = generateBufImage.value
 
       import scala.sys.process.*
       log.info(s"Running Buf breaking change detector against ${againstImage.getAbsolutePath}...")
-      // TODO:  clean up into a nicer Process
-      val result = s"buf breaking --against ${againstImage.getAbsolutePath} ${currentImage.getAbsolutePath}" ! streams.value.log
+      val result = Process(Seq(
+        "buf",
+        "breaking",
+        "--against",
+        againstImage.getAbsolutePath,
+        currentImage.getAbsolutePath
+      )) ! streams.value.log
+
       if (result != 0) {
-        log.error(s"Unexpected exit code from Buf breaking: ${result}")
-        throw new IllegalStateException("Buf breaking change detector failed")
+        throw new IllegalStateException(s"Buf breaking change detector failed with exit code: $result")
+      } else {
+        log.info("Buf breaking change detection passed successfully!")
       }
     }
   }
 
+  private def runBufLint(): Def.Initialize[InputTask[Unit]] = {
+    import complete.DefaultParsers.*
+    val parser = spaceDelimited("<arg>")
+    Def.inputTask {
+      val log = streams.value.log
+      val lintVersion = parser.parsed.headOption
+      val targetImage = lintVersion match {
+        case Some(version) =>
+          val lm = (Compile / dependencyResolution).value
+
+          val againstModule = (organization.value %% artifact.value.name % version) artifacts bufArtifactDefinition.value
+          val outdir = bufAgainstImageDir.value / "lint"
+
+          fetchAgainstTarget(againstModule, log, lm, outdir)
+        case None =>
+          generateBufImage.value
+      }
+
+      import scala.sys.process.*
+      log.info(s"Running Buf lint against ${targetImage.getAbsolutePath}...")
+      val result = Process(Seq(
+        "buf",
+        "lint",
+        targetImage.getAbsolutePath
+      )) ! streams.value.log
+
+      if (result != 0) {
+        throw new IllegalStateException(s"Buf lint command failed with exit code ${result}")
+      } else {
+        log.info("Buf lint passed successfully!")
+      }
+    }
+  }
   override lazy val projectSettings = Seq(
     bufImageArtifact := true,
     bufArtifactDefinition := Artifact(artifact.value.name, BufImageArtifactType, bufImageExt.value, Some(BufImageArtifactClassifier), Vector.empty, None),
     bufImageDir := (Compile / target).value / "buf",
     bufImageExt := "bin",
     bufAgainstImageDir := (Compile / target).value / "buf-against",
-    breakingCategory := "FILE",
+    breakingCategory := File,
     generateBufFiles := {
       (Compile / PB.generate).value
       val srcModuleDirs = (Compile / PB.includePaths).value.map(_.getPath).map(file).filter(d => d.isDirectory && d.list().nonEmpty)
-      val cat = breakingCategory.value
       val log = streams.value.log
       import io.circe.syntax.EncoderOps
       import io.circe.yaml.syntax.*
@@ -127,7 +166,7 @@ object SbtBufPlugin extends AutoPlugin {
           log.info(s"Writing buf module file to ${bufModFile.getAbsolutePath}")
           IO.write(
             bufModFile,
-            ModuleConfig(cat).asJson.asYaml.spaces2.getBytes
+            ModuleConfig.defaultWithIgnoreLintDirs(List("google", "scalapb", "validate")).asJson.asYaml.spaces2.getBytes
           )
         case _ =>
           log.debug("Buf module file already exists")
@@ -148,7 +187,7 @@ object SbtBufPlugin extends AutoPlugin {
       if (!imageDirFile.exists()) {
         IO.createDirectory(imageDirFile)
       }
-      val image: File = imageDirFile / s"buf-image.${bufImageExt.value}"
+      val image: File = imageDirFile / s"buf-workingdir-image.${bufImageExt.value}"
 
       val log = streams.value.log
       import scala.sys.process.*
@@ -171,15 +210,8 @@ object SbtBufPlugin extends AutoPlugin {
         artifacts.value :+ bufArtifactDefinition.value
       else artifacts.value
     },
-//    bufFetchAgainstTarget := fetchAgainstTarget(bufCompatCheck.evaluated),
-    bufCompatCheck := runBufCompatCheck().evaluated
-    //PB.generate := PB.generate.dependsOn(bufFetchAgainstTarget).value,
-//    Compile / PB.targets := {
-//      val bufParams = """{"against_input": "target/", "limit_to_input_files": true, "log_level": "debug"}"""
-//      Seq(
-//        (bufBreakingPlugin, Seq(s"${bufParams}")) -> (ThisBuild/ baseDirectory).value / "buf-output",
-//      )
-//    }
+    bufCompatCheck := runBufCompatCheck().evaluated,
+    bufLint := runBufLint().evaluated
   )
 
   override lazy val buildSettings = Seq()

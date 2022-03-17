@@ -6,7 +6,7 @@ val CirceVersion = "0.14.1"
 inThisBuild(List(
   name := """sbt-buf""",
   organization := "com.yoppworks",
-  version := "0.1-SNAPSHOT",
+  version := "0.2-SNAPSHOT",
   homepage := Some(url("https://github.com/sbt/sbt-autoplugin.g8")),
   licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
   addSbtPlugin("com.thesamet" % "sbt-protoc" % "1.0.0"),
