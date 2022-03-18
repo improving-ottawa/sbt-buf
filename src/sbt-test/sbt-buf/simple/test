@@ -9,8 +9,8 @@ $ exec git commit -m 'initial commit'
 # version published at 0.0.1-SNAPSHOT
 > publishLocal
 # assert buf files were created
-#$ exec test -f src/main/protobuf/buf.yaml
-#$ exec test -f target/protobuf_external/buf.yaml
+$ exec test -f src/main/protobuf/buf.yaml
+$ exec test -f target/protobuf_external/buf.yaml
 $ exec test -f buf.work.yaml
 # assert buf image was created
 $ exec test -f target/buf/buf-workingdir-image.bin
