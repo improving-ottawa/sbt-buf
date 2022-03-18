@@ -1,14 +1,14 @@
 # sbt-buf
 
-Simple SBT plugin providing wrappers around a subset of [Buf](https://docs.buf.build) operations
+Simple SBT plugin providing wrappers around a subset of [Buf](https://docs.buf.build) operations.
 
 ## Dependencies
 
 ### Buf
 
-Has an unmanaged dependency on [Buf](https://docs.buf.build/installation) being installed on the build system.  It uses only the `buf` binary, which it expects to find on `$PATH`
+Has an unmanaged dependency on [Buf](https://docs.buf.build/installation) being installed on the build system.  It uses only the `buf` binary, which it expects to find on `$PATH`.
 
-This version of the plugin was tested and validated against Buf version 1.1.0:
+This version of the plugin was tested and validated against Buf version 1.1.0.
 
 ### sbt-protoc
 
@@ -24,18 +24,18 @@ addSbtPlugin("com.yoppworks", "sbt-buf", "0.1.0")
 
 ## Tasks
 
-- `bufCompatCheck` - Breaking change detection task.  As described in How it Works, accepts a version of the artifact to which compare the working directory against as an argument.    
+- `bufCompatCheck` - Breaking change detection task.  As described in How it Works, accepts as an argument a version of the artifact to which compare the working directory against.    
   - Eg. ```$> sbt "bufCompatCheck 1.2.1"```
-- `bufLint` - Currently on supports running over the current working directory.  Runs only on sources fromm this project, ignores import/external proto sources.
+- `bufLint` - Currently only supports running over the current working directory.  Runs only on sources from this project, ignores import/external proto sources.
 
 ## Configuration
 
 - `bufImageArtifact: Boolean` - Controls the default behaviour of automatically adding the Buf artifact generation and publishing to the build.  Set to `false` to disable this default behaviour.
 - `bufArtifactDefinition: Artifact` - Defines the artifact characteristics of the Buf artifact.  Is not really meant for manipulation by clients.
-- `bufImageDir: File` - Target directory in which Buf working directory image is generated.  Defaults to
+- `bufImageDir: File` - Target directory in which Buf working directory image is generated.  Defaults to `target/buf`.
 - `bufImageExt: ImageExtension` - Extension format to use for generated Buf images.  Defaults to Binary.  Beware that this is a global setting and controls not only image generation, but artifact resolution.  Be careful when changing this configuration:  if you have previously generated/published artifacts of a different extension type, changing this will have the effect of not being able to resolve that same artifact using the new/different extension value.
-- `bufAgainstImageDir: File` - Target directory in which Buf against target image for breaking change detection is downloaded to")
-- `breakingCategory: Seq[BreakingUse]` - Category to use for configuring breaking change detection.  Defaults to the Buf default of `List(FILE)`
+- `bufAgainstImageDir: File` - Target directory in which Buf against target image for breaking change detection is downloaded to.  Defaults to `target/buf-against`.
+- `breakingCategory: Seq[BreakingUse]` - Category to use for configuring breaking change detection.  Defaults to the Buf default of `List(FILE)`.
 
 ## How it works
 
