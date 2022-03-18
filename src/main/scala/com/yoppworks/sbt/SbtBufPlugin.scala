@@ -1,5 +1,4 @@
-package com.cpc.tracktrace.sbt
-
+package com.yoppworks.sbt
 
 import sbt.Keys.*
 import sbt.internal.util.ManagedLogger
@@ -26,25 +25,23 @@ object SbtBufPlugin extends AutoPlugin {
       val bufImageArtifact = settingKey[Boolean]("Whether the generated buf image should be added to the project as an artifact.  Will have the effect of publishing the artifact with publish or publishLocal tasks.")
       val bufArtifactDefinition = settingKey[Artifact]("Artifact definition for bug image artifact")
       val bufImageDir = settingKey[File]("Target directory in which Buf image is generated")
-      val bufImageExt = settingKey[String]("Format for Buf generate and published artifacts")
+      val bufImageExt = settingKey[ImageExtension]("Format for Buf generate and published artifacts")
       val generateBufFiles = taskKey[Unit]("Generate Buf files in each of the 'modules' managed by ScalaPB")
 
       // against
       val bufAgainstImageDir = settingKey[File]("Target directory in which Buf against target image is downloaded to")
-      val bufAgainstImage = settingKey[File]("Location of the Buf image to use as the against target in compatibility checks")
       val bufFetchAgainstTarget = taskKey[File]("Fetches against target image as an artifact, using bufAgainstVersion")
       val bufCompatCheck = inputKey[Unit]("Task that runs the Buf compatibility check.  Accepts the version string to resolve the dependency")
 
       val bufLint = inputKey[Unit]("Run buf lint command against current working directory or a specified published image artifact version")
 
-      val breakingCategory = settingKey[BreakingUse]("Breaking category")
+      val breakingCategory = settingKey[Seq[BreakingUse]]("Breaking category")
     }
   }
 
   import autoImport.Buf.*
 
   private def fetchAgainstTarget(againstArtifactModule: ModuleID, log: ManagedLogger, lm: DependencyResolution, targetDir: File): File = {
-
     val formatExtension = againstArtifactModule.explicitArtifacts.head.extension
     def downloadArtifact(targetDirectory: File, moduleId: ModuleID): Future[File] = {
       log.info(s"Fetching Buf against target image: ${moduleId}")
@@ -137,11 +134,11 @@ object SbtBufPlugin extends AutoPlugin {
   }
   override lazy val projectSettings = Seq(
     bufImageArtifact := true,
-    bufArtifactDefinition := Artifact(artifact.value.name, BufImageArtifactType, bufImageExt.value, Some(BufImageArtifactClassifier), Vector.empty, None),
+    bufArtifactDefinition := Artifact(artifact.value.name, BufImageArtifactType, bufImageExt.value.ext, Some(BufImageArtifactClassifier), Vector.empty, None),
     bufImageDir := (Compile / target).value / "buf",
-    bufImageExt := "bin",
+    bufImageExt := Binary,
     bufAgainstImageDir := (Compile / target).value / "buf-against",
-    breakingCategory := File,
+    breakingCategory := Seq(File),
     generateBufFiles := {
       (Compile / PB.generate).value
       val srcModuleDirs = (Compile / PB.includePaths).value.map(_.getPath).map(file).filter(d => d.isDirectory && d.list().nonEmpty)
@@ -154,7 +151,7 @@ object SbtBufPlugin extends AutoPlugin {
         log.info(s"Writing buf module file to ${moduleFile.getAbsolutePath}")
         IO.write(
           moduleFile,
-          ModuleConfig.defaultWithIgnoreLintDirs(importProtosToIgnore.toList).asJson.asYaml.spaces2.getBytes
+          ModuleConfig(breakingCategory.value, importProtosToIgnore).asJson.asYaml.spaces2.getBytes
         )
       }
       val bufWorkspaceFile = baseDirectory.value / "buf.work.yaml"
@@ -176,10 +173,11 @@ object SbtBufPlugin extends AutoPlugin {
       val log = streams.value.log
       import scala.sys.process.*
       log.info(s"Building Buf image to ${image.getAbsolutePath}...")
+      val projectDir = baseDirectory.value
       val result = Process(Seq(
         "buf",
         "build",
-        "./",
+        projectDir.getAbsolutePath,
         "-o",
         image.getAbsolutePath
       )) ! streams.value.log
@@ -202,8 +200,4 @@ object SbtBufPlugin extends AutoPlugin {
     bufCompatCheck := runBufCompatCheck().evaluated,
     bufLint := runBufLint().evaluated
   )
-
-  override lazy val buildSettings = Seq()
-
-  override lazy val globalSettings = Seq()
 }

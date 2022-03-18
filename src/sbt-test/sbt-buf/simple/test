@@ -15,7 +15,6 @@ $ exec test -f buf.work.yaml
 # assert buf image was created
 $ exec test -f target/buf/buf-workingdir-image.bin
 # test lint task
-$ pause
 > bufLint
 # make some changes to the proto message to introduce a linting error (camel case vs snake-case), and a breaking change (field type change)
 $ exec sed -i'' 's/string another_value/google.protobuf.StringValue anotherValue/g' src/main/protobuf/pkg/v1/test.proto
