@@ -30,12 +30,12 @@ addSbtPlugin("com.yoppworks", "sbt-buf", "0.1.0")
 
 ## Configuration
 
-- `bufImageArtifact: Boolean` - Controls the default behaviour of automatically adding the Buf artifact generation and publishing to the build.  Set to `false` to disable this default behaviour.
-- `bufArtifactDefinition: Artifact` - Defines the artifact characteristics of the Buf artifact.  Is not really meant for manipulation by clients.
-- `bufImageDir: File` - Target directory in which Buf working directory image is generated.  Defaults to `target/buf`.
-- `bufImageExt: ImageExtension` - Extension format to use for generated Buf images.  Defaults to Binary.  Beware that this is a global setting and controls not only image generation, but artifact resolution.  Be careful when changing this configuration:  if you have previously generated/published artifacts of a different extension type, changing this will have the effect of not being able to resolve that same artifact using the new/different extension value.
-- `bufAgainstImageDir: File` - Target directory in which Buf against target image for breaking change detection is downloaded to.  Defaults to `target/buf-against`.
-- `breakingCategory: Seq[BreakingUse]` - Category to use for configuring breaking change detection.  Defaults to the Buf default of `List(FILE)`.
+- `Buf.imageArtifact: Boolean` - Controls the default behaviour of automatically adding the Buf artifact generation and publishing to the build.  Set to `false` to disable this default behaviour.
+- `Buf.artifactDefinition: Artifact` - Defines the artifact characteristics of the Buf artifact.  Is not really meant for manipulation by clients.
+- `Buf.imageDir: File` - Target directory in which Buf working directory image is generated.  Defaults to `target/buf`.
+- `Buf.imageExt: ImageExtension` - Extension format to use for generated Buf images.  Defaults to Binary.  Beware that this is a global setting and controls not only image generation, but artifact resolution.  Be careful when changing this configuration:  if you have previously generated/published artifacts of a different extension type, changing this will have the effect of not being able to resolve that same artifact using the new/different extension value.
+- `Buf.againstImageDir: File` - Target directory in which Buf against target image for breaking change detection is downloaded to.  Defaults to `target/buf-against`.
+- `Buf.breakingCategory: Seq[BreakingUse]` - Category to use for configuring breaking change detection.  Defaults to the Buf default of `List(FILE)`.
 
 ## How it works
 

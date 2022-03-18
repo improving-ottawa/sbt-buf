@@ -34,18 +34,18 @@ object SbtBufPlugin extends AutoPlugin {
       // create buf image, publish buf image
       val generateBufImage =
         taskKey[File]("Generate buf image from proto definitions in this project")
-      val bufImageArtifact = settingKey[Boolean](
+      val addImageArtifactToBuild = settingKey[Boolean](
         "Whether the generated buf image should be added to the project as an artifact.  Will have the effect of publishing the artifact with publish or publishLocal tasks."
       )
-      val bufArtifactDefinition = settingKey[Artifact]("Artifact definition for bug image artifact")
-      val bufImageDir = settingKey[File]("Target directory in which Buf image is generated")
-      val bufImageExt =
+      val artifactDefinition = settingKey[Artifact]("Artifact definition for bug image artifact")
+      val imageDir           = settingKey[File]("Target directory in which Buf image is generated")
+      val imageExt =
         settingKey[ImageExtension]("Format for Buf generate and published artifacts")
       val generateBufFiles =
         taskKey[Unit]("Generate Buf files in each of the 'modules' managed by ScalaPB")
 
       // against
-      val bufAgainstImageDir =
+      val againstImageDir =
         settingKey[File]("Target directory in which Buf against target image is downloaded to")
       val bufFetchAgainstTarget =
         taskKey[File]("Fetches against target image as an artifact, using bufAgainstVersion")
@@ -129,8 +129,8 @@ object SbtBufPlugin extends AutoPlugin {
       val lm = (Compile / dependencyResolution).value
 
       val againstModule =
-        (organization.value %% artifact.value.name % againstArtifactVersion) artifacts bufArtifactDefinition.value
-      val outdir = bufAgainstImageDir.value / "compat"
+        (organization.value %% artifact.value.name % againstArtifactVersion) artifacts artifactDefinition.value
+      val outdir = againstImageDir.value / "compat"
 
       val againstImage = fetchAgainstTarget(againstModule, log, lm, outdir)
 
@@ -181,19 +181,19 @@ object SbtBufPlugin extends AutoPlugin {
     }
   }
   override lazy val projectSettings = Seq(
-    bufImageArtifact := true,
-    bufArtifactDefinition := Artifact(
+    addImageArtifactToBuild := true,
+    artifactDefinition := Artifact(
       artifact.value.name,
       BufImageArtifactType,
-      bufImageExt.value.ext,
+      imageExt.value.ext,
       Some(BufImageArtifactClassifier),
       Vector.empty,
       None
     ),
-    bufImageDir        := (Compile / target).value / "buf",
-    bufImageExt        := Binary,
-    bufAgainstImageDir := (Compile / target).value / "buf-against",
-    breakingCategory   := Seq(File),
+    imageDir         := (Compile / target).value / "buf",
+    imageExt         := Binary,
+    againstImageDir  := (Compile / target).value / "buf-against",
+    breakingCategory := Seq(File),
     generateBufFiles := {
       (Compile / PB.generate).value
       val srcModuleDirs = (Compile / PB.includePaths).value
@@ -229,11 +229,11 @@ object SbtBufPlugin extends AutoPlugin {
     },
     generateBufImage := {
       generateBufFiles.value
-      val imageDirFile = bufImageDir.value
+      val imageDirFile = imageDir.value
       if (!imageDirFile.exists()) {
         IO.createDirectory(imageDirFile)
       }
-      val image: File = imageDirFile / s"buf-workingdir-image.${bufImageExt.value}"
+      val image: File = imageDirFile / s"buf-workingdir-image.${imageExt.value}"
 
       val log = streams.value.log
       import scala.sys.process.*
@@ -255,13 +255,13 @@ object SbtBufPlugin extends AutoPlugin {
       image
     },
     packagedArtifacts := {
-      if (bufImageArtifact.value)
-        packagedArtifacts.value.updated(bufArtifactDefinition.value, generateBufImage.value)
+      if (addImageArtifactToBuild.value)
+        packagedArtifacts.value.updated(artifactDefinition.value, generateBufImage.value)
       else packagedArtifacts.value
     },
     artifacts := {
-      if (bufImageArtifact.value)
-        artifacts.value :+ bufArtifactDefinition.value
+      if (addImageArtifactToBuild.value)
+        artifacts.value :+ artifactDefinition.value
       else artifacts.value
     },
     bufCompatCheck := runBufCompatCheck().evaluated,
