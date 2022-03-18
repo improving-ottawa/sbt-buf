@@ -14,11 +14,12 @@ $ exec git commit -m 'initial commit'
 $ exec test -f buf.work.yaml
 # assert buf image was created
 $ exec test -f target/buf/buf-workingdir-image.bin
-#$ exec test -f ~/.ivy2/local/testsbtbufhappypath/testsbtbufhappypath_2.13/0.0.1-SNAPSHOT/buf-images/testsbtbufhappypath_2.13-buf.bin
-# make some changes to the proto messages
-$ exec sed -i'' 's/string another_value/google.protobuf.StringValue another_value/g' src/main/protobuf/pkg/test.proto
--> bufCompatCheck 0.0.1
+# test lint task
 $ pause
 > bufLint
-$ exec sed -i'' 's/version := "0.0.1-SNAPSHOT"/version := "0.0.1"/g' build.sbt
+# make some changes to the proto message to introduce a linting error (camel case vs snake-case), and a breaking change (field type change)
+$ exec sed -i'' 's/string another_value/google.protobuf.StringValue anotherValue/g' src/main/protobuf/pkg/v1/test.proto
+-> bufCompatCheck 0.0.1
+-> bufLint
+
 

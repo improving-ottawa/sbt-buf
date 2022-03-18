@@ -3,9 +3,8 @@ syntax = "proto3";
 import "validate/validate.proto";
 import "scalapb/scalapb.proto";
 import "scalapb/validate.proto";
-import "google/protobuf/wrappers.proto";
 
-package "testpackage";
+package pkg.v1;
 
 option (scalapb.options) = {
   single_file: true

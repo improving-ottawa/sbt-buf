@@ -120,25 +120,12 @@ object SbtBufPlugin extends AutoPlugin {
     val parser = spaceDelimited("<arg>")
     Def.inputTask {
       val log = streams.value.log
-      val lintVersion = parser.parsed.headOption
-      val targetImage = lintVersion match {
-        case Some(version) =>
-          val lm = (Compile / dependencyResolution).value
-
-          val againstModule = (organization.value %% artifact.value.name % version) artifacts bufArtifactDefinition.value
-          val outdir = bufAgainstImageDir.value / "lint"
-
-          fetchAgainstTarget(againstModule, log, lm, outdir)
-        case None =>
-          generateBufImage.value
-      }
-
       import scala.sys.process.*
-      log.info(s"Running Buf lint against ${targetImage.getAbsolutePath}...")
+      log.info(s"Running Buf lint against working directory...")
       val result = Process(Seq(
         "buf",
         "lint",
-        targetImage.getAbsolutePath
+        "./"
       )) ! streams.value.log
 
       if (result != 0) {
@@ -161,25 +148,22 @@ object SbtBufPlugin extends AutoPlugin {
       val log = streams.value.log
       import io.circe.syntax.EncoderOps
       import io.circe.yaml.syntax.*
-      srcModuleDirs.map(_ / "buf.yaml").foreach {
-        case bufModFile if !bufModFile.exists() =>
-          log.info(s"Writing buf module file to ${bufModFile.getAbsolutePath}")
-          IO.write(
-            bufModFile,
-            ModuleConfig.defaultWithIgnoreLintDirs(List("google", "scalapb", "validate")).asJson.asYaml.spaces2.getBytes
-          )
-        case _ =>
-          log.debug("Buf module file already exists")
+      // ignore all imports during linting, so collect all root folders within all external sources
+      val importProtosToIgnore = Seq((Compile/ PB.externalIncludePath).value, (Compile/PB.externalSourcePath).value).filter(_.isDirectory).flatMap(_.listFiles()).filter(_ != null).map(_.getName)
+      srcModuleDirs.map(_ / "buf.yaml").foreach { moduleFile =>
+        log.info(s"Writing buf module file to ${moduleFile.getAbsolutePath}")
+        IO.write(
+          moduleFile,
+          ModuleConfig.defaultWithIgnoreLintDirs(importProtosToIgnore.toList).asJson.asYaml.spaces2.getBytes
+        )
       }
       val bufWorkspaceFile = baseDirectory.value / "buf.work.yaml"
       val relativeSrcDirs = srcModuleDirs.map(_.relativeTo(baseDirectory.value).getOrElse(throw new IllegalStateException("Buf src dir must be relative to project root")))
-      if (!bufWorkspaceFile.exists()) {
-        log.debug(s"Writing buf workspace file to ${bufWorkspaceFile.getAbsolutePath}")
-        IO.write(
-          bufWorkspaceFile,
-          WorkspaceConfig(relativeSrcDirs.map(_.getPath)).asJson.asYaml.spaces2.getBytes
-        )
-      }
+      log.debug(s"Writing buf workspace file to ${bufWorkspaceFile.getAbsolutePath}")
+      IO.write(
+        bufWorkspaceFile,
+        WorkspaceConfig(relativeSrcDirs.map(_.getPath)).asJson.asYaml.spaces2.getBytes
+      )
     },
     generateBufImage := {
       generateBufFiles.value
@@ -192,8 +176,13 @@ object SbtBufPlugin extends AutoPlugin {
       val log = streams.value.log
       import scala.sys.process.*
       log.info(s"Building Buf image to ${image.getAbsolutePath}...")
-      // TODO:  clean up into a nicer Process
-      val result = s"buf build ./ -o ${image.getAbsolutePath}" ! streams.value.log
+      val result = Process(Seq(
+        "buf",
+        "build",
+        "./",
+        "-o",
+        image.getAbsolutePath
+      )) ! streams.value.log
       if (result != 0) {
         log.error(s"Unexpected exit code from Buf build: ${result}")
         throw new IllegalStateException("Buf build failed")
