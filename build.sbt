@@ -6,7 +6,7 @@ val CirceVersion = "0.14.1"
 inThisBuild(List(
   name := """sbt-buf""",
   organization := "com.yoppworks",
-  version := "0.1.0",
+  version := "0.1.0-SNAPSHOT",
   homepage := Some(url("https://github.com/YoppWorks/sbt-buf")),
   licenses := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0")),
   addSbtPlugin("com.thesamet" % "sbt-protoc" % "1.0.0"),
@@ -42,5 +42,3 @@ scriptedLaunchOpts ++=
 //ThisBuild / githubWorkflowTargetTags ++= Seq("v*")
 //ThisBuild / githubWorkflowPublishTargetBranches :=
 //  Seq(RefPredicate.StartsWith(Ref.Tag("v")))
-
-

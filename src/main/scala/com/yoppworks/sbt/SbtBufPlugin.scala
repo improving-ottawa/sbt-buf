@@ -63,6 +63,94 @@ object SbtBufPlugin extends AutoPlugin {
 
   import autoImport.Buf.*
 
+  override lazy val projectSettings = Seq(
+    addImageArtifactToBuild := true,
+    artifactDefinition := Artifact(
+      artifact.value.name,
+      BufImageArtifactType,
+      imageExt.value.ext,
+      Some(BufImageArtifactClassifier),
+      Vector.empty,
+      None
+    ),
+    imageDir         := (Compile / target).value / "buf",
+    imageExt         := Binary,
+    againstImageDir  := (Compile / target).value / "buf-against",
+    breakingCategory := Seq(File),
+    generateBufFiles := {
+      (Compile / PB.generate).value
+      val srcModuleDirs = (Compile / PB.includePaths).value
+        .map(_.getPath)
+        .map(file)
+        .filter(d => d.isDirectory && d.list().nonEmpty)
+      val log = streams.value.log
+      import io.circe.syntax.EncoderOps
+      import io.circe.yaml.syntax.*
+      // ignore all imports during linting, so collect all root folders within all external sources
+      val importProtosToIgnore = Seq(
+        (Compile / PB.externalIncludePath).value,
+        (Compile / PB.externalSourcePath).value
+      ).filter(_.isDirectory).flatMap(_.listFiles()).filter(_ != null).map(_.getName)
+      srcModuleDirs.map(_ / "buf.yaml").foreach { moduleFile =>
+        log.info(s"Writing buf module file to ${moduleFile.getAbsolutePath}")
+        IO.write(
+          moduleFile,
+          ModuleConfig(breakingCategory.value, importProtosToIgnore).asJson.asYaml.spaces2.getBytes
+        )
+      }
+      val bufWorkspaceFile = baseDirectory.value / "buf.work.yaml"
+      val relativeSrcDirs = srcModuleDirs.map(
+        _.relativeTo(baseDirectory.value).getOrElse(
+          throw new IllegalStateException("Buf src dir must be relative to project root")
+        )
+      )
+      log.debug(s"Writing buf workspace file to ${bufWorkspaceFile.getAbsolutePath}")
+      IO.write(
+        bufWorkspaceFile,
+        WorkspaceConfig(relativeSrcDirs.map(_.getPath)).asJson.asYaml.spaces2.getBytes
+      )
+    },
+    generateBufImage := {
+      generateBufFiles.value
+      val imageDirFile = imageDir.value
+      if (!imageDirFile.exists()) {
+        IO.createDirectory(imageDirFile)
+      }
+      val image: File = imageDirFile / s"buf-workingdir-image.${imageExt.value}"
+
+      val log = streams.value.log
+      import scala.sys.process.*
+      log.info(s"Building Buf image to ${image.getAbsolutePath}...")
+      val projectDir = baseDirectory.value
+      val result = Process(
+        Seq(
+          "buf",
+          "build",
+          projectDir.getAbsolutePath,
+          "-o",
+          image.getAbsolutePath
+        )
+      ) ! streams.value.log
+      if (result != 0) {
+        log.error(s"Unexpected exit code from Buf build: ${result}")
+        throw new IllegalStateException("Buf build failed")
+      }
+      image
+    },
+    packagedArtifacts := {
+      if (addImageArtifactToBuild.value)
+        packagedArtifacts.value.updated(artifactDefinition.value, generateBufImage.value)
+      else packagedArtifacts.value
+    },
+    artifacts := {
+      if (addImageArtifactToBuild.value)
+        artifacts.value :+ artifactDefinition.value
+      else artifacts.value
+    },
+    bufCompatCheck := runBufCompatCheck().evaluated,
+    bufLint        := runBufLint().evaluated
+  )
+
   private def fetchAgainstTarget(
       againstArtifactModule: ModuleID,
       log: ManagedLogger,
@@ -180,91 +268,4 @@ object SbtBufPlugin extends AutoPlugin {
       }
     }
   }
-  override lazy val projectSettings = Seq(
-    addImageArtifactToBuild := true,
-    artifactDefinition := Artifact(
-      artifact.value.name,
-      BufImageArtifactType,
-      imageExt.value.ext,
-      Some(BufImageArtifactClassifier),
-      Vector.empty,
-      None
-    ),
-    imageDir         := (Compile / target).value / "buf",
-    imageExt         := Binary,
-    againstImageDir  := (Compile / target).value / "buf-against",
-    breakingCategory := Seq(File),
-    generateBufFiles := {
-      (Compile / PB.generate).value
-      val srcModuleDirs = (Compile / PB.includePaths).value
-        .map(_.getPath)
-        .map(file)
-        .filter(d => d.isDirectory && d.list().nonEmpty)
-      val log = streams.value.log
-      import io.circe.syntax.EncoderOps
-      import io.circe.yaml.syntax.*
-      // ignore all imports during linting, so collect all root folders within all external sources
-      val importProtosToIgnore = Seq(
-        (Compile / PB.externalIncludePath).value,
-        (Compile / PB.externalSourcePath).value
-      ).filter(_.isDirectory).flatMap(_.listFiles()).filter(_ != null).map(_.getName)
-      srcModuleDirs.map(_ / "buf.yaml").foreach { moduleFile =>
-        log.info(s"Writing buf module file to ${moduleFile.getAbsolutePath}")
-        IO.write(
-          moduleFile,
-          ModuleConfig(breakingCategory.value, importProtosToIgnore).asJson.asYaml.spaces2.getBytes
-        )
-      }
-      val bufWorkspaceFile = baseDirectory.value / "buf.work.yaml"
-      val relativeSrcDirs = srcModuleDirs.map(
-        _.relativeTo(baseDirectory.value).getOrElse(
-          throw new IllegalStateException("Buf src dir must be relative to project root")
-        )
-      )
-      log.debug(s"Writing buf workspace file to ${bufWorkspaceFile.getAbsolutePath}")
-      IO.write(
-        bufWorkspaceFile,
-        WorkspaceConfig(relativeSrcDirs.map(_.getPath)).asJson.asYaml.spaces2.getBytes
-      )
-    },
-    generateBufImage := {
-      generateBufFiles.value
-      val imageDirFile = imageDir.value
-      if (!imageDirFile.exists()) {
-        IO.createDirectory(imageDirFile)
-      }
-      val image: File = imageDirFile / s"buf-workingdir-image.${imageExt.value}"
-
-      val log = streams.value.log
-      import scala.sys.process.*
-      log.info(s"Building Buf image to ${image.getAbsolutePath}...")
-      val projectDir = baseDirectory.value
-      val result = Process(
-        Seq(
-          "buf",
-          "build",
-          projectDir.getAbsolutePath,
-          "-o",
-          image.getAbsolutePath
-        )
-      ) ! streams.value.log
-      if (result != 0) {
-        log.error(s"Unexpected exit code from Buf build: ${result}")
-        throw new IllegalStateException("Buf build failed")
-      }
-      image
-    },
-    packagedArtifacts := {
-      if (addImageArtifactToBuild.value)
-        packagedArtifacts.value.updated(artifactDefinition.value, generateBufImage.value)
-      else packagedArtifacts.value
-    },
-    artifacts := {
-      if (addImageArtifactToBuild.value)
-        artifacts.value :+ artifactDefinition.value
-      else artifacts.value
-    },
-    bufCompatCheck := runBufCompatCheck().evaluated,
-    bufLint        := runBufLint().evaluated
-  )
 }
