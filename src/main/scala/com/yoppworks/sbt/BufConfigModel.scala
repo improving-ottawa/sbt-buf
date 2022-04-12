@@ -6,19 +6,20 @@ sealed trait BreakingUse {
   def label: String
   override def toString: String = label
 }
-object BreakingUse {
-  implicit val useEncoder = Encoder.instance[BreakingUse](u => io.circe.Json.fromString(u.label))
-}
 abstract class AbsBreakingUse(val label: String) extends BreakingUse
 
-case object File     extends AbsBreakingUse("FILE")
-case object Package  extends AbsBreakingUse("PACKAGE")
-case object Wire     extends AbsBreakingUse("WIRE")
-case object WireJson extends AbsBreakingUse("WIRE_JSON")
+object BreakingUse {
+  implicit val useEncoder = Encoder.instance[BreakingUse](u => io.circe.Json.fromString(u.label))
+
+  case object File     extends AbsBreakingUse("FILE")
+  case object Package  extends AbsBreakingUse("PACKAGE")
+  case object Wire     extends AbsBreakingUse("WIRE")
+  case object WireJson extends AbsBreakingUse("WIRE_JSON")
+}
 
 case class Breaking(use: Seq[BreakingUse])
 object Breaking {
-  def defaultBreakingConfig = Breaking(Seq(File))
+  def defaultBreakingConfig = Breaking(Seq(BreakingUse.File))
   import io.circe.generic.semiauto.deriveEncoder
   implicit val usesEncoder = deriveEncoder[Breaking]
 }
@@ -31,19 +32,19 @@ abstract class AbsLintUse(val label: String) extends LintUse
 
 object AbsLintUse {
   implicit val lintUseEncoder = Encoder.instance[AbsLintUse](u => io.circe.Json.fromString(u.label))
-}
 
-case object Minimal  extends AbsLintUse("MINIMAL")
-case object Basic    extends AbsLintUse("BASIC")
-case object Default  extends AbsLintUse("DEFAULT")
-case object Comments extends AbsLintUse("COMMENTS")
-case object UnaryRpc extends AbsLintUse("UNARY_RPC")
+  case object Minimal  extends AbsLintUse("MINIMAL")
+  case object Basic    extends AbsLintUse("BASIC")
+  case object Default  extends AbsLintUse("DEFAULT")
+  case object Comments extends AbsLintUse("COMMENTS")
+  case object UnaryRpc extends AbsLintUse("UNARY_RPC")
+}
 
 case class Lint(use: Seq[AbsLintUse], ignore: Seq[String] = Seq.empty[String]) {
   def withIgnores(ignores: Seq[String]) = copy(ignore = ignores)
 }
 object Lint {
-  def defaultLintConfig = Lint(Seq(Default))
+  def defaultLintConfig = Lint(Seq(AbsLintUse.Default))
   import io.circe.generic.semiauto.deriveEncoder
   implicit val encoder = deriveEncoder[Lint]
 }
@@ -68,5 +69,7 @@ sealed trait ImageExtensionT {
 }
 abstract class ImageExtension(val ext: String) extends ImageExtensionT
 
-case object Binary extends ImageExtension("bin")
-case object Json   extends ImageExtension("json")
+object ImageExtension {
+  case object Binary extends ImageExtension("bin")
+  case object Json   extends ImageExtension("json")
+}

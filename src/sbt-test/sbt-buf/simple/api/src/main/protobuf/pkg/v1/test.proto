@@ -3,6 +3,7 @@ syntax = "proto3";
 import "validate/validate.proto";
 import "scalapb/scalapb.proto";
 import "scalapb/validate.proto";
+import "kernel_pkg/v1/test.proto";
 
 package pkg.v1;
 
@@ -25,4 +26,5 @@ message TestType {
 
 message AnotherType {
   string another_value = 1;
+  kernel_pkg.v1.KernelType k_type = 2;
 }
