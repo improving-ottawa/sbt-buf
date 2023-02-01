@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+import "validate/validate.proto";
+import "scalapb/scalapb.proto";
+import "scalapb/validate.proto";
+
+package pkg.v1;
+
+option (scalapb.options) = {
+  single_file: true
+  retain_source_code_info: true
+  no_default_values_in_constructor: true
+  [scalapb.validate.file] {
+    validate_at_construction: false
+    insert_validator_instance: true
+  }
+};
+
+message AnotherType {
+  string value = 1  [(validate.rules).string = {
+    pattern: "[A-Za-z]{10}$",
+    max_bytes: 10,
+  }];
+}
+
+// test will uncomment to simulate a file-level breaking change, but package compatible
+//message TestType2 {
+//  int64 value = 1;
+//}

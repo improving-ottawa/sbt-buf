@@ -6,7 +6,7 @@ ThisBuild / scalaVersion := "2.13.7"
 
 val scalaPbDeps =  Seq(
   "com.thesamet.scalapb" %% "scalapb-runtime" % scalapb.compiler.Version.scalapbVersion % "protobuf",
-  "com.thesamet.scalapb" %% "scalapb-validate-codegen" % "0.3.2",
+  "com.thesamet.scalapb" %% "scalapb-validate-codegen" % "0.3.3",
   "com.thesamet.scalapb" %% "scalapb-validate-core" % scalapb.validate.compiler.BuildInfo.version % "protobuf"
 )
 
@@ -71,7 +71,7 @@ lazy val service = project.in(file("."))
       scalapb.validate.gen() -> (Compile / sourceManaged).value / "scalapb"
     ),
     testEmptySourcesTask := {
-      require(!Buf.moduleHasBufSrcs.value, "Module should report no protobuf/Buf sources")
+      require(!Buf.hasBufSrcs.value, "Module should report no protobuf/Buf sources")
       ()
     }
   )

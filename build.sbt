@@ -7,7 +7,7 @@ lazy val sbtBuf = project
   .configure(Helpers.publishing)
   .settings(
     name         := """sbt-buf""",
-    organization := "com.yoppworks",
+    organization := "com.yoppworks.sbt",
     homepage     := Some(url("https://github.com/YoppWorks/sbt-buf")),
     licenses     := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0")),
     sbtPlugin := true,
@@ -31,7 +31,7 @@ lazy val sbtBuf = project
     scalacOptions ++= Seq(
       "-Xfatal-warnings"
     ),
-    console / initialCommands := "import com.yoppwork._",
+    //console / initialCommands := "import com.yoppwork._",
     // set up 'scripted; sbt plugin for testing sbt plugins
     scriptedLaunchOpts ++=
       Seq("-Xmx1024M", "-Dplugin.version=" + version.value)

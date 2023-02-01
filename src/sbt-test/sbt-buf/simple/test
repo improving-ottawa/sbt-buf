@@ -1,0 +1,26 @@
+# Setup repository.
+$ exec git init
+$ exec git config user.email "email"
+$ exec git config user.name "name"
+$ exec git add .gitignore
+$ exec git add .
+$ exec git commit -m 'initial commit'
+# build buf image
+# version published at 0.0.1-SNAPSHOT
+> publishLocal
+# now simulate moving message from one file in package to another (file-breaking change, but package-compatible)
+# comment out TestType2 from test.proto
+$ exec sed -i'' '26s/^/\/\//' src/main/protobuf/pkg/v1/test.proto
+$ exec sed -i'' '27s/^/\/\//' src/main/protobuf/pkg/v1/test.proto
+$ exec sed -i'' '28s/^/\/\//' src/main/protobuf/pkg/v1/test.proto
+# uncomment TestType2 in test2.proto (simulating moving from test.proto -> test1.proto)
+$ exec sed -i'' '27s/\/\///' src/main/protobuf/pkg/v1/test2.proto
+$ exec sed -i'' '28s/\/\///' src/main/protobuf/pkg/v1/test2.proto
+$ exec sed -i'' '29s/\/\///' src/main/protobuf/pkg/v1/test2.proto
+# now we expect default FILE-level compatibility check to fail
+-> bufCompatCheck 0.0.1-SNAPSHOT
+# uncomment package-level compatibility setting in build.sbt
+$ exec sed -i'' '21s/\/\///' build.sbt
+# now expect compat check to pass at package level
+> reload
+> bufCompatCheck 0.0.1-SNAPSHOT
