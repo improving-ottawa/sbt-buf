@@ -41,7 +41,7 @@ object SbtBufPlugin extends AutoPlugin {
       val addImageArtifactToBuild = settingKey[Boolean](
         "Whether the generated buf image should be added to the project as an artifact.  Will have the effect of publishing the artifact with publish or publishLocal tasks."
       )
-      val srcModuleFile =
+      val bufSrcModuleFile =
         taskKey[Option[File]]("Buf Module file for the primary source of this (sbt) module")
       val artifactDefinition = settingKey[Artifact]("Artifact definition for bug image artifact")
       val imageDir           = settingKey[File]("Target directory in which Buf image is generated")
@@ -103,7 +103,7 @@ object SbtBufPlugin extends AutoPlugin {
         f.relativeTo(baseSrc).isDefined && new Directory(f).deepFiles.nonEmpty
       )
     },
-    srcModuleFile := {
+    bufSrcModuleFile := {
       val srcDirs = (Compile / PB.protoSources).value
       bufSrcDirs.value
         .map(s => (s \ "buf.yaml").get().headOption)
@@ -293,7 +293,7 @@ object SbtBufPlugin extends AutoPlugin {
             s"Using $againstArtifactVersion for against artifact version in Buf breaking change detection"
           )
 
-          val configModule = srcModuleFile.value.getOrElse(
+          val configModule = bufSrcModuleFile.value.getOrElse(
             throw new IllegalStateException(
               "Cannot determine module proto src Buf module to use for input configuration of compatibility check"
             )
