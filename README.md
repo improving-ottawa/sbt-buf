@@ -19,7 +19,7 @@ This plugin depends on functionality provided by the [sbt-protoc](https://github
 Include in `project/plugins.sbt`:
 
 ```
-addSbtPlugin("com.yoppworks", "sbt-buf", "0.1.0")
+addSbtPlugin("com.yoppworks.sbt", "sbt-buf", "0.6.0")
 ```
 
 ## Tasks

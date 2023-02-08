@@ -19,7 +19,6 @@ import sbt.{
 import sbtprotoc.ProtocPlugin
 import sbtprotoc.ProtocPlugin.autoImport.PB
 
-import java.io.FilenameFilter
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, blocking}
 
@@ -33,8 +32,8 @@ object SbtBufPlugin extends AutoPlugin {
       val BufImageArtifactType       = "buf-image"
       val BufImageArtifactClassifier = "buf"
       // create buf image, publish buf image
-      val moduleBufSrcDirs = taskKey[Seq[File]]("All source directories for a given module")
-      val moduleHasBufSrcs = taskKey[Boolean](
+      val bufSrcDirs = taskKey[Seq[File]]("All source directories for a given module")
+      val hasBufSrcs = taskKey[Boolean](
         "Checks whether a given module has proto sources relevant to Buf operations"
       )
       val generateBufImage =
@@ -42,6 +41,8 @@ object SbtBufPlugin extends AutoPlugin {
       val addImageArtifactToBuild = settingKey[Boolean](
         "Whether the generated buf image should be added to the project as an artifact.  Will have the effect of publishing the artifact with publish or publishLocal tasks."
       )
+      val bufSrcModuleFile =
+        taskKey[Option[File]]("Buf Module file for the primary source of this (sbt) module")
       val artifactDefinition = settingKey[Artifact]("Artifact definition for bug image artifact")
       val imageDir           = settingKey[File]("Target directory in which Buf image is generated")
       val imageExt =
@@ -82,29 +83,40 @@ object SbtBufPlugin extends AutoPlugin {
     imageExt         := ImageExtension.Binary,
     againstImageDir  := (Compile / target).value / "buf-against",
     breakingCategory := Seq(BreakingUse.File),
-    moduleBufSrcDirs := {
+    bufSrcDirs := {
       (Compile / PB.generate).value
       val module     = target.value
       val targetDirs = module.listFiles()
       (Compile / PB.includePaths).value
         .map(_.getPath)
         .map(file)
-        .filter(d => d.isDirectory && d.list().nonEmpty)
+        .filter(f => f.isDirectory && f.list().nonEmpty)
+        // TODO:  clean this up - last filter is too cryptic
+        // filter out external imports from sibling module dependencies,
+        // which are a duplication of the external imports brought in by the current module anyhow
         .filterNot(d => d.getName.contains("protobuf_external") && !targetDirs.contains(d))
     },
-    moduleHasBufSrcs := {
+    hasBufSrcs := {
       import scala.reflect.io.Directory
       val baseSrc = sourceDirectory.value
-      moduleBufSrcDirs.value.exists(f =>
+      bufSrcDirs.value.exists(f =>
         f.relativeTo(baseSrc).isDefined && new Directory(f).deepFiles.nonEmpty
       )
     },
+    bufSrcModuleFile := {
+      val srcDirs = (Compile / PB.protoSources).value
+      bufSrcDirs.value
+        .map(s => (s \ "buf.yaml").get().headOption)
+        .collectFirst {
+          case Some(bufMod) if srcDirs.exists(sd => bufMod.relativeTo(sd).nonEmpty) => bufMod
+        }
+    },
     generateBufFiles := {
       val log           = streams.value.log
-      val srcModuleDirs = moduleBufSrcDirs.value
+      val srcModuleDirs = bufSrcDirs.value
       val projectBase   = baseDirectory.value
       log.debug(s"Found these Buf src directories for module at ${projectBase}: ${srcModuleDirs}")
-      if (!moduleHasBufSrcs.value) {
+      if (!hasBufSrcs.value) {
         log.warn(
           s"Module at ${projectBase} does not seem to contain and proto sources, skipping any Buf artifact generation"
         )
@@ -191,7 +203,7 @@ object SbtBufPlugin extends AutoPlugin {
       }
     },
     packagedArtifacts := {
-      if (addImageArtifactToBuild.value && moduleHasBufSrcs.value)
+      if (addImageArtifactToBuild.value && hasBufSrcs.value)
         packagedArtifacts.value.updated(
           artifactDefinition.value,
           generateBufImage.value.getOrElse(
@@ -280,6 +292,13 @@ object SbtBufPlugin extends AutoPlugin {
           log.info(
             s"Using $againstArtifactVersion for against artifact version in Buf breaking change detection"
           )
+
+          val configModule = bufSrcModuleFile.value.getOrElse(
+            throw new IllegalStateException(
+              "Cannot determine module proto src Buf module to use for input configuration of compatibility check"
+            )
+          )
+
           val lm = (Compile / dependencyResolution).value
 
           val againstModule =
@@ -298,7 +317,9 @@ object SbtBufPlugin extends AutoPlugin {
               "breaking",
               "--against",
               againstImage.getAbsolutePath,
-              currentImage.getAbsolutePath
+              currentImage.getAbsolutePath,
+              "--config",
+              configModule.getAbsolutePath
             )
           ) ! streams.value.log
 
@@ -319,7 +340,7 @@ object SbtBufPlugin extends AutoPlugin {
     Def.inputTask {
       val log = streams.value.log
       import scala.sys.process.*
-      if (!moduleHasBufSrcs.value) {
+      if (!hasBufSrcs.value) {
         ()
       } else {
         log.info(s"Running Buf lint against working directory...")
