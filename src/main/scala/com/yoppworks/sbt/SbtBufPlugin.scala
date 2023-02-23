@@ -18,9 +18,11 @@ import sbt.{
 }
 import sbtprotoc.ProtocPlugin
 import sbtprotoc.ProtocPlugin.autoImport.PB
+import sbt.ConcurrentRestrictions.Tag
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, blocking}
+import scala.util.Properties
 
 object SbtBufPlugin extends AutoPlugin {
 
@@ -45,10 +47,13 @@ object SbtBufPlugin extends AutoPlugin {
         taskKey[Option[File]]("Buf Module file for the primary source of this (sbt) module")
       val artifactDefinition = settingKey[Artifact]("Artifact definition for bug image artifact")
       val imageDir           = settingKey[File]("Target directory in which Buf image is generated")
+      val imageFile          = taskKey[File]("Generated Buf image file")
       val imageExt =
         settingKey[ImageExtension]("Format for Buf generate and published artifacts")
       val generateBufFiles =
         taskKey[Seq[File]]("Generate Buf files in each of the 'modules' managed by ScalaPB")
+
+      val Isolated = Tag("isolated")
 
       // against
       val againstImageDir =
@@ -68,6 +73,10 @@ object SbtBufPlugin extends AutoPlugin {
   }
 
   import autoImport.Buf.*
+
+  override lazy val globalSettings: Seq[Setting[_]] = Seq(
+    concurrentRestrictions += Tags.limit(Isolated, max = 1)
+  )
 
   override lazy val projectSettings = Seq(
     addImageArtifactToBuild := true,
@@ -170,45 +179,69 @@ object SbtBufPlugin extends AutoPlugin {
         moduleFiles :+ bufWorkspaceFile
       }
     },
-    generateBufImage := {
-      val log      = streams.value.log
-      val bufFiles = generateBufFiles.value
-      if (bufFiles.isEmpty) {
-        log.debug(s"No Buf files generated, skipping Buf image generation")
-        None
-      } else {
-        val imageDirFile = imageDir.value
-        if (!imageDirFile.exists()) {
-          IO.createDirectory(imageDirFile)
-        }
-        val image: File = imageDirFile / s"buf-workingdir-image.${imageExt.value}"
+    generateBufImage := Def
+      .task {
+        val log      = streams.value.log
+        val bufFiles = generateBufFiles.value
+        if (bufFiles.isEmpty) {
+          log.debug(s"No Buf files generated, skipping Buf image generation")
+          None
+        } else {
+          val imageDirFile = imageDir.value
+          if (!imageDirFile.exists()) {
+            IO.createDirectory(imageDirFile)
+          }
+          val image: File = imageDirFile / s"buf-workingdir-image.${imageExt.value}"
 
-        import scala.sys.process.*
-        log.info(s"Building Buf image to ${image.getAbsolutePath}...")
-        val projectDir = baseDirectory.value
-        val result = Process(
-          Seq(
-            "buf",
-            "build",
-            projectDir.getAbsolutePath,
-            "-o",
-            image.getAbsolutePath
-          )
-        ) ! log
-        if (result != 0) {
-          log.error(s"Unexpected exit code from Buf build: ${result}")
-          throw new IllegalStateException("Buf build failed")
+          import scala.sys.process.*
+          log.info(s"Building Buf image to ${image.getAbsolutePath}...")
+          val projectDir = baseDirectory.value
+          val result = Process(
+            Seq(
+              "buf",
+              "build",
+              projectDir.getAbsolutePath,
+              "-o",
+              image.getAbsolutePath
+            )
+          ) ! log
+          if (result != 0) {
+            log.error(s"Unexpected exit code from Buf build: ${result}")
+            throw new IllegalStateException("Buf build failed")
+          }
+          Some(image)
         }
-        Some(image)
       }
+      .tag(Tags.Compile, Isolated)
+      .value,
+    // To ensure that the image is generated in the same order as the compilation task compiles dependent modules.
+    Compile / compile := Def.taskDyn {
+      val result = (Compile / compile).value
+
+      if (hasBufSrcs.value) {
+        Def.task {
+          generateBufImage.value.getOrElse(
+            throw new IllegalStateException("Buf sources exist but no image was generated")
+          )
+          result
+        }
+      } else {
+        Def.task {
+          result
+        }
+      }
+    }.value,
+    imageFile := {
+      val imageDirFile = imageDir.value
+      if (!imageDirFile.exists())
+        IO.createDirectory(imageDirFile)
+      imageDirFile / s"buf-workingdir-image.${imageExt.value}"
     },
     packagedArtifacts := {
       if (addImageArtifactToBuild.value && hasBufSrcs.value)
         packagedArtifacts.value.updated(
           artifactDefinition.value,
-          generateBufImage.value.getOrElse(
-            throw new IllegalStateException("Buf sources exist but no image was generated")
-          )
+          imageFile.value
         )
       else packagedArtifacts.value
     },
@@ -219,6 +252,12 @@ object SbtBufPlugin extends AutoPlugin {
     },
     bufCompatCheck := runBufCompatCheck().evaluated,
     bufLint        := runBufLint().evaluated
+  ) ++ Seq(
+    // override the protoc executable provided by the PROTOC environment variable or the one installed by Homebrew on M1 Macs,
+    // as the Mac M1 ARM compatible version of protoc is not yet published on Maven Central
+    PB.protocExecutable := (if (protocbridge.SystemDetector.detectedClassifier() == "osx-aarch_64")
+                              file(Properties.envOrElse("PROTOC", "/opt/homebrew/bin/protoc"))
+                            else PB.protocExecutable.value)
   )
 
   private def fetchAgainstTarget(

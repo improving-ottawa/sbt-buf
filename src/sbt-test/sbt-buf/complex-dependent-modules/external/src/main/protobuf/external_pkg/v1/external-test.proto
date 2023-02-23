@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+import "validate/validate.proto";
+import "scalapb/scalapb.proto";
+import "scalapb/validate.proto";
+
+package externalpkg.v1;
+
+option (scalapb.options) = {
+  single_file: true
+  retain_source_code_info: true
+  no_default_values_in_constructor: true
+  [scalapb.validate.file] {
+    validate_at_construction: false
+    insert_validator_instance: true
+  }
+};
+
+message ExternalType {
+  string value = 1  [(validate.rules).string = {
+    pattern: "^[0-9A-Z]{12}$",
+    max_bytes: 12,
+  }];
+}
+
+message AnotherExternalType {
+  int64 a_long = 1;
+}
