@@ -18,7 +18,6 @@ import sbt.{
 }
 import sbtprotoc.ProtocPlugin
 import sbtprotoc.ProtocPlugin.autoImport.PB
-import sbt.ConcurrentRestrictions.Tag
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, blocking}
@@ -53,8 +52,6 @@ object SbtBufPlugin extends AutoPlugin {
       val generateBufFiles =
         taskKey[Seq[File]]("Generate Buf files in each of the 'modules' managed by ScalaPB")
 
-      val Isolated = Tag("isolated")
-
       // against
       val againstImageDir =
         settingKey[File]("Target directory in which Buf against target image is downloaded to")
@@ -73,10 +70,6 @@ object SbtBufPlugin extends AutoPlugin {
   }
 
   import autoImport.Buf.*
-
-  override lazy val globalSettings: Seq[Setting[_]] = Seq(
-    concurrentRestrictions += Tags.limit(Isolated, max = 1)
-  )
 
   override lazy val projectSettings = Seq(
     addImageArtifactToBuild := true,
@@ -179,41 +172,38 @@ object SbtBufPlugin extends AutoPlugin {
         moduleFiles :+ bufWorkspaceFile
       }
     },
-    generateBufImage := Def
-      .task {
-        val log      = streams.value.log
-        val bufFiles = generateBufFiles.value
-        if (bufFiles.isEmpty) {
-          log.debug(s"No Buf files generated, skipping Buf image generation")
-          None
-        } else {
-          val imageDirFile = imageDir.value
-          if (!imageDirFile.exists()) {
-            IO.createDirectory(imageDirFile)
-          }
-          val image: File = imageDirFile / s"buf-workingdir-image.${imageExt.value}"
-
-          import scala.sys.process.*
-          log.info(s"Building Buf image to ${image.getAbsolutePath}...")
-          val projectDir = baseDirectory.value
-          val result = Process(
-            Seq(
-              "buf",
-              "build",
-              projectDir.getAbsolutePath,
-              "-o",
-              image.getAbsolutePath
-            )
-          ) ! log
-          if (result != 0) {
-            log.error(s"Unexpected exit code from Buf build: ${result}")
-            throw new IllegalStateException("Buf build failed")
-          }
-          Some(image)
+    generateBufImage := {
+      val log      = streams.value.log
+      val bufFiles = generateBufFiles.value
+      if (bufFiles.isEmpty) {
+        log.debug(s"No Buf files generated, skipping Buf image generation")
+        None
+      } else {
+        val imageDirFile = imageDir.value
+        if (!imageDirFile.exists()) {
+          IO.createDirectory(imageDirFile)
         }
+        val image: File = imageDirFile / s"buf-workingdir-image.${imageExt.value}"
+
+        import scala.sys.process.*
+        log.info(s"Building Buf image to ${image.getAbsolutePath}...")
+        val projectDir = baseDirectory.value
+        val result = Process(
+          Seq(
+            "buf",
+            "build",
+            projectDir.getAbsolutePath,
+            "-o",
+            image.getAbsolutePath
+          )
+        ) ! log
+        if (result != 0) {
+          log.error(s"Unexpected exit code from Buf build: ${result}")
+          throw new IllegalStateException("Buf build failed")
+        }
+        Some(image)
       }
-      .tag(Tags.Compile, Isolated)
-      .value,
+    },
     // To ensure that the image is generated in the same order as the compilation task compiles dependent modules.
     Compile / compile := Def.taskDyn {
       val result = (Compile / compile).value
