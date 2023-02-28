@@ -21,6 +21,7 @@ import sbtprotoc.ProtocPlugin.autoImport.PB
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, blocking}
+import scala.util.Properties
 
 object SbtBufPlugin extends AutoPlugin {
 
@@ -45,6 +46,7 @@ object SbtBufPlugin extends AutoPlugin {
         taskKey[Option[File]]("Buf Module file for the primary source of this (sbt) module")
       val artifactDefinition = settingKey[Artifact]("Artifact definition for bug image artifact")
       val imageDir           = settingKey[File]("Target directory in which Buf image is generated")
+      val imageFile          = taskKey[File]("Generated Buf image file")
       val imageExt =
         settingKey[ImageExtension]("Format for Buf generate and published artifacts")
       val generateBufFiles =
@@ -202,13 +204,34 @@ object SbtBufPlugin extends AutoPlugin {
         Some(image)
       }
     },
+    // To ensure that the image is generated in the same order as the compilation task compiles dependent modules.
+    Compile / compile := Def.taskDyn {
+      val result = (Compile / compile).value
+
+      if (hasBufSrcs.value) {
+        Def.task {
+          generateBufImage.value.getOrElse(
+            throw new IllegalStateException("Buf sources exist but no image was generated")
+          )
+          result
+        }
+      } else {
+        Def.task {
+          result
+        }
+      }
+    }.value,
+    imageFile := {
+      val imageDirFile = imageDir.value
+      if (!imageDirFile.exists())
+        IO.createDirectory(imageDirFile)
+      imageDirFile / s"buf-workingdir-image.${imageExt.value}"
+    },
     packagedArtifacts := {
       if (addImageArtifactToBuild.value && hasBufSrcs.value)
         packagedArtifacts.value.updated(
           artifactDefinition.value,
-          generateBufImage.value.getOrElse(
-            throw new IllegalStateException("Buf sources exist but no image was generated")
-          )
+          imageFile.value
         )
       else packagedArtifacts.value
     },
@@ -219,6 +242,12 @@ object SbtBufPlugin extends AutoPlugin {
     },
     bufCompatCheck := runBufCompatCheck().evaluated,
     bufLint        := runBufLint().evaluated
+  ) ++ Seq(
+    // override the protoc executable provided by the PROTOC environment variable or the one installed by Homebrew on M1 Macs,
+    // as the Mac M1 ARM compatible version of protoc is not yet published on Maven Central
+    PB.protocExecutable := (if (protocbridge.SystemDetector.detectedClassifier() == "osx-aarch_64")
+                              file(Properties.envOrElse("PROTOC", "/opt/homebrew/bin/protoc"))
+                            else PB.protocExecutable.value)
   )
 
   private def fetchAgainstTarget(
