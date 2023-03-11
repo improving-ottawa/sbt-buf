@@ -3,7 +3,7 @@ syntax = "proto3";
 import "validate/validate.proto";
 import "scalapb/scalapb.proto";
 import "scalapb/validate.proto";
-//import "external_pkg/v1/external-test.proto";
+import "external_pkg/v1/external-test.proto";
 
 package pkg.v1;
 
@@ -26,5 +26,5 @@ message TestType {
 
 message AnotherType {
   string another_value = 1;
-//  externalpkg.v1.ExternalType k_type = 2;
+  externalpkg.v1.ExternalType k_type = 2;
 }

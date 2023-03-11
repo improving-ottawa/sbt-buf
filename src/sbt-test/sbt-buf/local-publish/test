@@ -5,7 +5,5 @@ $ exec git config user.name "name"
 $ exec git add .gitignore
 $ exec git add .
 $ exec git commit -m 'initial commit'
-$ pause
 > external/publishLocal
-
 > compile
