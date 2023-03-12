@@ -18,11 +18,9 @@ import sbt.{
 }
 import sbtprotoc.ProtocPlugin
 import sbtprotoc.ProtocPlugin.autoImport.PB
-import sbt.ConcurrentRestrictions.Tag
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, blocking}
-import scala.util.Properties
 
 object SbtBufPlugin extends AutoPlugin {
 
@@ -48,13 +46,10 @@ object SbtBufPlugin extends AutoPlugin {
         taskKey[Option[File]]("Buf Module file for the primary source of this (sbt) module")
       val artifactDefinition = settingKey[Artifact]("Artifact definition for bug image artifact")
       val imageDir           = settingKey[File]("Target directory in which Buf image is generated")
-      val imageFile          = taskKey[File]("Generated Buf image file")
       val imageExt =
         settingKey[ImageExtension]("Format for Buf generate and published artifacts")
       val generateBufFiles =
         taskKey[Seq[File]]("Generate Buf files in each of the 'modules' managed by ScalaPB")
-
-      val Isolated = Tag("isolated")
 
       // against
       val againstImageDir =
@@ -86,10 +81,6 @@ object SbtBufPlugin extends AutoPlugin {
   }
 
   import autoImport.Buf.*
-
-  override lazy val globalSettings: Seq[Setting[_]] = Seq(
-    concurrentRestrictions += Tags.limit(Isolated, max = 1)
-  )
 
   override lazy val projectSettings = Seq(
     addImageArtifactToBuild := true,
@@ -151,128 +142,115 @@ object SbtBufPlugin extends AutoPlugin {
           case Some(bufMod) if srcDirs.exists(sd => bufMod.relativeTo(sd).nonEmpty) => bufMod
         }
     },
-    generateBufFiles := {
-      val log           = streams.value.log
-      val srcModuleDirs = bufSrcDirs.value
-      val projectBase   = baseDirectory.value
-      log.debug(s"Found these Buf src directories for module at ${projectBase}: ${srcModuleDirs}")
-      if (!hasBufSrcs.value) {
-        log.warn(
-          s"Module at ${projectBase} does not seem to contain and proto sources, skipping any Buf artifact generation"
-        )
-        Seq.empty
-      } else {
-        import io.circe.syntax.EncoderOps
-        import io.circe.yaml.syntax.*
-        // ignore all imports during linting, so collect all root folders within all external sources
-        val importProtosToIgnore = Seq(
-          (Compile / PB.externalIncludePath).value,
-          (Compile / PB.externalSourcePath).value
-        ).filter(_.isDirectory).flatMap(_.listFiles()).filter(_ != null).map(_.getName)
-        val moduleFiles = srcModuleDirs.map(_ / "buf.yaml").map { moduleFile =>
-          log.info(s"Writing buf module file to ${moduleFile.getAbsolutePath}")
-          IO.write(
-            moduleFile,
-            ModuleConfig(
-              breakingCategory.value,
-              importProtosToIgnore
-            ).asJson.asYaml.spaces2.getBytes
-          )
-          moduleFile
-        }
-        val projectBase      = baseDirectory.value
-        val bufWorkspaceFile = projectBase / "buf.work.yaml"
-        val moduleTarget     = target.value
-        val relativeSrcDirs =
-          srcModuleDirs
-            .map(srcDir => srcDir -> srcDir.relativeTo(projectBase))
-            .map {
-              case (_, Some(rd))  => rd
-              case (srcDir, None) =>
-                // for cases of cross-module proto dependency (non-relative), we must copy the dependency to be 'local' (relative)
-                // to this sbt module to abide by Buf's requirement that all module/workspace dependencies be relative
-                log.info(
-                  s"Found non relative src directory ${srcDir}, copying to ${moduleTarget} to appear relative to Buf workspace"
-                )
-                val rd = copyRelativeDependency(moduleTarget, srcDir)
-                rd.relativeTo(projectBase).getOrElse {
-                  throw new IllegalStateException(
-                    s"Copied source directory ${rd} is not relative to project base ${projectBase}"
-                  )
-                }
-            }
-            .distinct
-        log.info(s"Writing buf workspace file to ${bufWorkspaceFile.getAbsolutePath}")
-        IO.write(
-          bufWorkspaceFile,
-          WorkspaceConfig(relativeSrcDirs.map(_.getPath)).asJson.asYaml.spaces2.getBytes
-        )
-        moduleFiles :+ bufWorkspaceFile
-      }
-    },
-    generateBufImage := Def
+    generateBufFiles := Def
       .task {
-        if (generateBufFiles.value.isEmpty) {
-          streams.value.log.debug(s"No Buf files generated, skipping Buf image generation")
-          None
-        } else {
-          val log = streams.value.log
-          val imageDirFile = imageDir.value
-          if (!imageDirFile.exists()) {
-            IO.createDirectory(imageDirFile)
-          }
-          val image: File = imageDirFile / s"buf-workingdir-image.${imageExt.value}"
-
-          import scala.sys.process.*
-          log.info(s"Building Buf image to ${image.getAbsolutePath}...")
-          val projectDir = baseDirectory.value
-          val bufBinary = bufExecutable.value
-          val result = Process(
-            Seq(
-              bufBinary.getAbsolutePath,
-              "build",
-              projectDir.getAbsolutePath,
-              "-o",
-              image.getAbsolutePath
-            )
-          ) ! log
-          if (result != 0) {
-            log.error(s"Unexpected exit code from Buf build: ${result}")
-            throw new IllegalStateException("Buf build failed")
-          }
-          Some(image)
-        }
-      }
-      .tag(Tags.Compile, Isolated)
-      .value,
-    // To ensure that the image is generated in the same order as the compilation task compiles dependent modules.
-    Compile / compile := Def.taskDyn {
-      val result = (Compile / compile).value
-
-      if (hasBufSrcs.value) {
-        Def.task {
-          generateBufImage.value.getOrElse(
-            throw new IllegalStateException("Buf sources exist but no image was generated")
+        val log           = streams.value.log
+        val srcModuleDirs = bufSrcDirs.value
+        val projectBase   = baseDirectory.value
+        log.debug(s"Found these Buf src directories for module at ${projectBase}: ${srcModuleDirs}")
+        if (!hasBufSrcs.value) {
+          log.warn(
+            s"Module at ${projectBase} does not seem to contain and proto sources, skipping any Buf artifact generation"
           )
-          result
+          Seq.empty
+        } else {
+          import io.circe.syntax.EncoderOps
+          import io.circe.yaml.syntax.*
+          // ignore all imports during linting, so collect all root folders within all external sources
+          val importProtosToIgnore = Seq(
+            (Compile / PB.externalIncludePath).value,
+            (Compile / PB.externalSourcePath).value
+          ).filter(_.isDirectory).flatMap(_.listFiles()).filter(_ != null).map(_.getName)
+          val moduleFiles = srcModuleDirs.map(_ / "buf.yaml").map { moduleFile =>
+            log.info(s"Writing buf module file to ${moduleFile.getAbsolutePath}")
+            IO.write(
+              moduleFile,
+              ModuleConfig(
+                breakingCategory.value,
+                importProtosToIgnore
+              ).asJson.asYaml.spaces2.getBytes
+            )
+            moduleFile
+          }
+          val projectBase      = baseDirectory.value
+          val bufWorkspaceFile = projectBase / "buf.work.yaml"
+          val moduleTarget     = target.value
+          val relativeSrcDirs =
+            srcModuleDirs
+              .map(srcDir => srcDir -> srcDir.relativeTo(projectBase))
+              .map {
+                case (_, Some(rd))  => rd
+                case (srcDir, None) =>
+                  // for cases of cross-module proto dependency (non-relative), we must copy the dependency to be 'local' (relative)
+                  // to this sbt module to abide by Buf's requirement that all module/workspace dependencies be relative
+                  log.info(
+                    s"Found non relative src directory ${srcDir}, copying to ${moduleTarget} to appear relative to Buf workspace"
+                  )
+                  val rd = copyRelativeDependency(moduleTarget, srcDir)
+                  rd.relativeTo(projectBase).getOrElse {
+                    throw new IllegalStateException(
+                      s"Copied source directory ${rd} is not relative to project base ${projectBase}"
+                    )
+                  }
+              }
+              .distinct
+          log.info(s"Writing buf workspace file to ${bufWorkspaceFile.getAbsolutePath}")
+          IO.write(
+            bufWorkspaceFile,
+            WorkspaceConfig(relativeSrcDirs.map(_.getPath)).asJson.asYaml.spaces2.getBytes
+          )
+          moduleFiles :+ bufWorkspaceFile
         }
-      } else {
-        Def.task {
-          result
-        }
+
       }
-    }.value,
-    imageFile := {
-      val imageDirFile = imageDir.value
-      if (!imageDirFile.exists())
-        IO.createDirectory(imageDirFile)
-      imageDirFile / s"buf-workingdir-image.${imageExt.value}"
+      .dependsOn(
+        generateBufFiles.?.all(
+          ScopeFilter(
+            inDependencies(ThisProject, transitive = false),
+            inConfigurations(Compile)
+          )
+        )
+      )
+      .value,
+    generateBufImage := {
+      if (generateBufFiles.value.isEmpty) {
+        streams.value.log.debug(s"No Buf files generated, skipping Buf image generation")
+        None
+      } else {
+        val log          = streams.value.log
+        val imageDirFile = imageDir.value
+        if (!imageDirFile.exists()) {
+          IO.createDirectory(imageDirFile)
+        }
+        val image: File = imageDirFile / s"buf-workingdir-image.${imageExt.value}"
+
+        import scala.sys.process.*
+        log.info(s"Building Buf image to ${image.getAbsolutePath}...")
+        val projectDir = baseDirectory.value
+        val bufBinary  = bufExecutable.value
+        val result = Process(
+          Seq(
+            bufBinary.getAbsolutePath,
+            "build",
+            projectDir.getAbsolutePath,
+            "-o",
+            image.getAbsolutePath
+          )
+        ) ! log
+        if (result != 0) {
+          log.error(s"Unexpected exit code from Buf build: ${result}")
+          throw new IllegalStateException("Buf build failed")
+        }
+        Some(image)
+      }
     },
     packagedArtifacts := {
       if (addImageArtifactToBuild.value && hasBufSrcs.value)
         packagedArtifacts.value.updated(
           artifactDefinition.value,
-          imageFile.value
+          generateBufImage.value.getOrElse(
+            throw new IllegalStateException("Buf sources exist but no image was generated")
+          )
         )
       else packagedArtifacts.value
     },
@@ -295,12 +273,6 @@ object SbtBufPlugin extends AutoPlugin {
       binaryFile.setExecutable(true)
       binaryFile
     }
-  ) ++ Seq(
-    // override the protoc executable provided by the PROTOC environment variable or the one installed by Homebrew on M1 Macs,
-    // as the Mac M1 ARM compatible version of protoc is not yet published on Maven Central
-    PB.protocExecutable := (if (protocbridge.SystemDetector.detectedClassifier() == "osx-aarch_64")
-                              file(Properties.envOrElse("PROTOC", "/opt/homebrew/bin/protoc"))
-                            else PB.protocExecutable.value)
   )
 
   private def fetchAgainstTarget(

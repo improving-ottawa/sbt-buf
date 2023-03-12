@@ -37,8 +37,9 @@ lazy val kernel = project.in(file("./kernel"))
   .settings(
     name := "TestSbtBufHappyPathKernel",
     libraryDependencies ++= scalaPbDeps,
-    // Deliberately adding a delay to ensure that the Buf images are generated with the correct order of dependencies even though the Kernel module takes longer to compile and generate Buf images
-    (Compile / compile) := ((Compile / compile) dependsOn testDelayTask).value,
+    // Deliberately adding a delay to ensure that the Buf images are generated with the correct order of dependencies even
+    // though the Kernel module takes longer to compile and generate Buf images
+    Buf.generateBufFiles := (Buf.generateBufFiles dependsOn testDelayTask).value,
     Compile / PB.targets := Seq(
       scalapb.gen() -> (Compile / sourceManaged).value / "scalapb",
       scalapb.validate.gen() -> (Compile / sourceManaged).value / "scalapb"

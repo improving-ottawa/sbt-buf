@@ -15,6 +15,7 @@ object TestPlugin extends AutoPlugin {
     val action: (State, String) => State = {
       (state,expectedOrder) =>
         val order = orderOfGeneratingBufImages.get().mkString(",")
+        state.log.info(s"Order of generated buf images: ${order}")
         require(order == expectedOrder,s"Order of generating Buf images is not correct, expected $expectedOrder, but got $order")
         state
     }

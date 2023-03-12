@@ -34,8 +34,11 @@ lazy val sbtBuf = project
     //console / initialCommands := "import com.yoppwork._",
     // set up 'scripted; sbt plugin for testing sbt plugins
     scriptedBufferLog := false,
-    scriptedLaunchOpts ++=
-      Seq("-Xmx1024M", "-Dplugin.version=" + version.value)
+    scriptedLaunchOpts ++= Seq(
+      "-Xmx1024M",
+      "-Dplugin.version=" + version.value,
+      "-Dsbt.ivy.home=" + sbt.Keys.ivyPaths.value.ivyHome.getOrElse("~/.ivy2")
+    )
   )
 
 // TODO:  enable publishing
