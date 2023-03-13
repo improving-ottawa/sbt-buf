@@ -4,18 +4,7 @@ import sbt.Keys.*
 import sbt.internal.util.ManagedLogger
 import sbt.librarymanagement.DependencyResolution
 import sbt.plugins.JvmPlugin
-import sbt.{
-  Artifact,
-  AutoPlugin,
-  Compile,
-  File,
-  ModuleID,
-  file,
-  settingKey,
-  taskKey,
-  io as sbtIo,
-  *
-}
+import sbt.{Artifact, AutoPlugin, Compile, File, ModuleID, file, settingKey, io as sbtIo,taskKey, *}
 import sbtprotoc.ProtocPlugin
 import sbtprotoc.ProtocPlugin.autoImport.PB
 
@@ -29,6 +18,7 @@ object SbtBufPlugin extends AutoPlugin {
 
   object autoImport {
     object Buf {
+      val Buf                        = config("buf")
       val BufImageArtifactType       = "buf-image"
       val BufImageArtifactClassifier = "buf"
       // create buf image, publish buf image
@@ -71,12 +61,13 @@ object SbtBufPlugin extends AutoPlugin {
 
   override lazy val projectSettings = Seq(
     addImageArtifactToBuild := true,
+    ivyConfigurations ++= Seq(Buf),
     artifactDefinition := Artifact(
       artifact.value.name,
       BufImageArtifactType,
       imageExt.value.ext,
       Some(BufImageArtifactClassifier),
-      Vector.empty,
+      Vector(Buf),
       None
     ),
     imageDir         := (Compile / target).value / "buf",
