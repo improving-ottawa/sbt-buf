@@ -1,6 +1,6 @@
 *.class
 *.log
-
+project/Helpers.scala
 target
 project/project
 project/target

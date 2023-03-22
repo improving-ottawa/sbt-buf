@@ -6,9 +6,9 @@ Simple SBT plugin providing wrappers around a subset of [Buf](https://docs.buf.b
 
 ### Buf
 
-Has an unmanaged dependency on [Buf](https://docs.buf.build/installation) being installed on the build system.  It uses only the `buf` binary, which it expects to find on `$PATH`.
+Has a managed dependency on [Buf](https://docs.buf.build/installation), which is resolved and downloaded from their [releases page](https://github.com/bufbuild/buf/releases) based on the type of system detected. 
 
-This version of the plugin was tested and validated against Buf version 1.1.0.
+This version of the plugin was tested and validated against [Buf v1.15.1](https://github.com/bufbuild/buf/releases/tag/v1.15.1).
 
 ### sbt-protoc
 

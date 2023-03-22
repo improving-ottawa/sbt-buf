@@ -4,7 +4,7 @@ import sbt.Keys.*
 import sbt.internal.util.ManagedLogger
 import sbt.librarymanagement.DependencyResolution
 import sbt.plugins.JvmPlugin
-import sbt.{Artifact, AutoPlugin, Compile, File, ModuleID, file, settingKey, io as sbtIo,taskKey, *}
+import sbt.{Artifact, AutoPlugin, Compile, File, ModuleID, file, settingKey, io as sbtIo, taskKey, *}
 import sbtprotoc.ProtocPlugin
 import sbtprotoc.ProtocPlugin.autoImport.PB
 
@@ -54,6 +54,18 @@ object SbtBufPlugin extends AutoPlugin {
       )
 
       val breakingCategory = settingKey[Seq[BreakingUse]]("Breaking category")
+
+      val bufExecutable = TaskKey[File](
+        "buf-executable",
+        "Path to a buf executable. Default downloads buf binary from Github."
+      )
+
+      val bufVersion = SettingKey[String]("buf-version", "Version flag to pass to buf")
+
+      val bufDependency = SettingKey[ModuleID](
+        "buf-dependency",
+        "Binary artifact for buf on Github"
+      )
     }
   }
 
@@ -70,6 +82,21 @@ object SbtBufPlugin extends AutoPlugin {
       Vector(Buf),
       None
     ),
+    bufVersion := "1.15.1",
+    bufDependency := {
+      val version = bufVersion.value
+      if (version.indexOf('.') == -1) {
+        throw new IllegalArgumentException(
+          s"""bufVersion must contain a dot-separated version number. For example: "3.13.0". Got: '${bufVersion.value}'"""
+        )
+      }
+      val systemClassifier = BufBinaryBridge.detectedClassifier()
+      if (systemClassifier.contains("unknown")) {
+        throw new IllegalStateException("Could not determine your OS and hardware architecture in order to download Buf")
+      }
+      "build.buf" % "buf-binary" % version % Buf from s"https://github.com/bufbuild/buf/releases/download/v$version/buf-$systemClassifier"
+    },
+    libraryDependencies += bufDependency.value,
     imageDir         := (Compile / target).value / "buf",
     imageExt         := ImageExtension.Binary,
     againstImageDir  := (Compile / target).value / "buf-against",
@@ -209,7 +236,19 @@ object SbtBufPlugin extends AutoPlugin {
       else artifacts.value
     },
     bufCompatCheck := runBufCompatCheck().evaluated,
-    bufLint        := runBufLint().evaluated
+    bufLint        := runBufLint().evaluated,
+    bufExecutable := {
+      val binaryFile = update.value.configurations
+        .find(_.configuration == Buf.toConfigRef)
+        .flatMap(_.modules.find(_.module.name == bufDependency.value.name))
+        .flatMap(_.artifacts.headOption)
+        .map {
+          case (_,binary) => binary
+        }
+        .getOrElse(throw new IllegalStateException("Could not find Buf binary"))
+      binaryFile.setExecutable(true)
+      binaryFile
+    }
   )
 
   private def fetchAgainstTarget(
@@ -302,9 +341,10 @@ object SbtBufPlugin extends AutoPlugin {
           log.info(
             s"Running Buf breaking change detector against ${againstImage.getAbsolutePath}..."
           )
+          val bufBinary = bufExecutable.value
           val result = Process(
             Seq(
-              "buf",
+              bufBinary.getAbsolutePath,
               "breaking",
               "--against",
               againstImage.getAbsolutePath,
@@ -336,9 +376,10 @@ object SbtBufPlugin extends AutoPlugin {
       } else {
         log.info(s"Running Buf lint against working directory...")
         val dir = baseDirectory.value
+        val bufBinary = bufExecutable.value
         val result = Process(
           Seq(
-            "buf",
+            bufBinary.getAbsolutePath,
             "lint",
             dir.getAbsolutePath
           )
