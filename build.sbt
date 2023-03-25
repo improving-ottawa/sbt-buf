@@ -4,7 +4,6 @@ val CirceVersion = "0.14.2"
 lazy val sbtBuf = project
   .in(file("."))
   .enablePlugins(ScriptedPlugin)
-  .configure(Helpers.publishing)
   .settings(
     name         := """sbt-buf""",
     organization := "com.yoppworks.sbt",
