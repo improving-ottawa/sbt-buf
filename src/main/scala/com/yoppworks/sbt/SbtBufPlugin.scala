@@ -4,7 +4,18 @@ import sbt.Keys.*
 import sbt.internal.util.ManagedLogger
 import sbt.librarymanagement.DependencyResolution
 import sbt.plugins.JvmPlugin
-import sbt.{Artifact, AutoPlugin, Compile, File, ModuleID, file, settingKey, io as sbtIo, taskKey, *}
+import sbt.{
+  Artifact,
+  AutoPlugin,
+  Compile,
+  File,
+  ModuleID,
+  file,
+  settingKey,
+  io as sbtIo,
+  taskKey,
+  *
+}
 import sbtprotoc.ProtocPlugin
 import sbtprotoc.ProtocPlugin.autoImport.PB
 
@@ -92,7 +103,9 @@ object SbtBufPlugin extends AutoPlugin {
       }
       val systemClassifier = BufBinaryBridge.detectedClassifier()
       if (systemClassifier.contains("unknown")) {
-        throw new IllegalStateException("Could not determine your OS and hardware architecture in order to download Buf")
+        throw new IllegalStateException(
+          "Could not determine your OS and hardware architecture in order to download Buf"
+        )
       }
       "build.buf" % "buf-binary" % version % Buf from s"https://github.com/bufbuild/buf/releases/download/v$version/buf-$systemClassifier"
     },
@@ -189,12 +202,11 @@ object SbtBufPlugin extends AutoPlugin {
       }
     },
     generateBufImage := {
-      val log      = streams.value.log
-      val bufFiles = generateBufFiles.value
-      if (bufFiles.isEmpty) {
-        log.debug(s"No Buf files generated, skipping Buf image generation")
+      if (generateBufFiles.value.isEmpty) {
+        streams.value.log.debug(s"No Buf files generated, skipping Buf image generation")
         None
       } else {
+        val log          = streams.value.log
         val imageDirFile = imageDir.value
         if (!imageDirFile.exists()) {
           IO.createDirectory(imageDirFile)
@@ -204,9 +216,10 @@ object SbtBufPlugin extends AutoPlugin {
         import scala.sys.process.*
         log.info(s"Building Buf image to ${image.getAbsolutePath}...")
         val projectDir = baseDirectory.value
+        val bufBinary  = bufExecutable.value
         val result = Process(
           Seq(
-            "buf",
+            bufBinary.getAbsolutePath,
             "build",
             projectDir.getAbsolutePath,
             "-o",
@@ -242,8 +255,8 @@ object SbtBufPlugin extends AutoPlugin {
         .find(_.configuration == Buf.toConfigRef)
         .flatMap(_.modules.find(_.module.name == bufDependency.value.name))
         .flatMap(_.artifacts.headOption)
-        .map {
-          case (_,binary) => binary
+        .map { case (_, binary) =>
+          binary
         }
         .getOrElse(throw new IllegalStateException("Could not find Buf binary"))
       binaryFile.setExecutable(true)
@@ -375,7 +388,7 @@ object SbtBufPlugin extends AutoPlugin {
         ()
       } else {
         log.info(s"Running Buf lint against working directory...")
-        val dir = baseDirectory.value
+        val dir       = baseDirectory.value
         val bufBinary = bufExecutable.value
         val result = Process(
           Seq(
