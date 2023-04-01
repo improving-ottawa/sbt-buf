@@ -17,7 +17,8 @@ lazy val sbtBuf = project
       "io.circe"             %% "circe-generic"  % CirceVersion,
       "io.circe"             %% "circe-yaml"     % CirceVersion,
       "org.scalactic"        %% "scalactic"      % "3.2.15" % Test,
-      "org.scalatest"        %% "scalatest"      % "3.2.15" % Test
+      "org.scalatest"        %% "scalatest"      % "3.2.15" % Test,
+      "uk.org.webcompere"    % "system-stubs-core" % "2.0.2" % Test
     ),
     developers := List(
       Developer(
@@ -32,6 +33,7 @@ lazy val sbtBuf = project
     ),
     //console / initialCommands := "import com.yoppwork._",
     // set up 'scripted; sbt plugin for testing sbt plugins
+    scriptedBufferLog := false,
     scriptedLaunchOpts ++=
       Seq("-Xmx1024M", "-Dplugin.version=" + version.value)
   )

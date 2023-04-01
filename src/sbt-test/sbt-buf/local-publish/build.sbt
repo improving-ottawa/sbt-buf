@@ -1,7 +1,7 @@
 import sbt.Keys.scalaVersion
 import sbt.util
 
-ThisBuild / version := "1.0.0"
+ThisBuild / version := "0.0.1-SNAPSHOT"
 ThisBuild / scalaVersion := "2.13.7"
 
 val scalaPbDeps =  Seq(
@@ -28,7 +28,7 @@ lazy val service = project.in(file("."))
   .settings(
     name := "TestBufLocalPublishBug",
     libraryDependencies ++= scalaPbDeps,
-    libraryDependencies += "TestBufLocalPublishBugExternal" %% "TestBufLocalPublishBugExternal" % "1.0.0" % "compile;protobuf",
+    libraryDependencies += "testbuflocalpublishbugexternal" %% "testbuflocalpublishbugexternal" % "0.0.1-SNAPSHOT" % "compile;protobuf",
     Compile / PB.targets := Seq(
       scalapb.gen() -> (Compile / sourceManaged).value / "scalapb",
       scalapb.validate.gen() -> (Compile / sourceManaged).value / "scalapb"
