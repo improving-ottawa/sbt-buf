@@ -1,0 +1,31 @@
+# Setup repository.
+$ exec git init
+$ exec git config user.email "email"
+$ exec git config user.name "name"
+$ exec git add .gitignore
+$ exec git add .
+$ exec git commit -m 'initial commit'
+# build buf image
+# version published at 0.0.1-SNAPSHOT
+> external/publishLocal
+> publishLocal
+> testEmptySourcesTask
+# assert buf files were created
+$ exec test -f client/src/main/protobuf/buf.yaml
+$ exec test -f client/target/protobuf_external/buf.yaml
+$ exec test -f client/buf.work.yaml
+$ exec test -f api/src/main/protobuf/buf.yaml
+$ exec test -f api/target/protobuf_external/buf.yaml
+$ exec test -f api/buf.work.yaml
+# assert no files were generated for the root module, which has no sources
+-$ exec test -f src/main/protobuf/buf.yaml
+-$ exec test -f target/protobuf_external/buf.yaml
+-$ exec test -f buf.work.yaml
+# assert buf image was created
+$ exec test -f client/target/buf/buf-workingdir-image.bin
+$ exec test -f api/target/buf/buf-workingdir-image.bin
+# assert no image was generated for root module without sources
+-$ exec test -f target/buf/buf-workingdir-image.bin
+> expectedOrderOfModules TestSbtBufHappyPathExternal,TestSbtBufHappyPathKernel,TestSbtBufHappyPathApi,TestSbtBufHappyPathClient
+
+

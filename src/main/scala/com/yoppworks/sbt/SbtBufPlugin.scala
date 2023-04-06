@@ -142,65 +142,76 @@ object SbtBufPlugin extends AutoPlugin {
           case Some(bufMod) if srcDirs.exists(sd => bufMod.relativeTo(sd).nonEmpty) => bufMod
         }
     },
-    generateBufFiles := {
-      val log           = streams.value.log
-      val srcModuleDirs = bufSrcDirs.value
-      val projectBase   = baseDirectory.value
-      log.debug(s"Found these Buf src directories for module at ${projectBase}: ${srcModuleDirs}")
-      if (!hasBufSrcs.value) {
-        log.warn(
-          s"Module at ${projectBase} does not seem to contain and proto sources, skipping any Buf artifact generation"
-        )
-        Seq.empty
-      } else {
-        import io.circe.syntax.EncoderOps
-        import io.circe.yaml.syntax.*
-        // ignore all imports during linting, so collect all root folders within all external sources
-        val importProtosToIgnore = Seq(
-          (Compile / PB.externalIncludePath).value,
-          (Compile / PB.externalSourcePath).value
-        ).filter(_.isDirectory).flatMap(_.listFiles()).filter(_ != null).map(_.getName)
-        val moduleFiles = srcModuleDirs.map(_ / "buf.yaml").map { moduleFile =>
-          log.info(s"Writing buf module file to ${moduleFile.getAbsolutePath}")
-          IO.write(
-            moduleFile,
-            ModuleConfig(
-              breakingCategory.value,
-              importProtosToIgnore
-            ).asJson.asYaml.spaces2.getBytes
+    generateBufFiles := Def
+      .task {
+        val log           = streams.value.log
+        val srcModuleDirs = bufSrcDirs.value
+        val projectBase   = baseDirectory.value
+        log.debug(s"Found these Buf src directories for module at ${projectBase}: ${srcModuleDirs}")
+        if (!hasBufSrcs.value) {
+          log.warn(
+            s"Module at ${projectBase} does not seem to contain and proto sources, skipping any Buf artifact generation"
           )
-          moduleFile
-        }
-        val projectBase      = baseDirectory.value
-        val bufWorkspaceFile = projectBase / "buf.work.yaml"
-        val moduleTarget     = target.value
-        val relativeSrcDirs =
-          srcModuleDirs
-            .map(srcDir => srcDir -> srcDir.relativeTo(projectBase))
-            .map {
-              case (_, Some(rd))  => rd
-              case (srcDir, None) =>
-                // for cases of cross-module proto dependency (non-relative), we must copy the dependency to be 'local' (relative)
-                // to this sbt module to abide by Buf's requirement that all module/workspace dependencies be relative
-                log.info(
-                  s"Found non relative src directory ${srcDir}, copying to ${moduleTarget} to appear relative to Buf workspace"
-                )
-                val rd = copyRelativeDependency(moduleTarget, srcDir)
-                rd.relativeTo(projectBase).getOrElse {
-                  throw new IllegalStateException(
-                    s"Copied source directory ${rd} is not relative to project base ${projectBase}"
+          Seq.empty
+        } else {
+          import io.circe.syntax.EncoderOps
+          import io.circe.yaml.syntax.*
+          // ignore all imports during linting, so collect all root folders within all external sources
+          val importProtosToIgnore = Seq(
+            (Compile / PB.externalIncludePath).value,
+            (Compile / PB.externalSourcePath).value
+          ).filter(_.isDirectory).flatMap(_.listFiles()).filter(_ != null).map(_.getName)
+          val moduleFiles = srcModuleDirs.map(_ / "buf.yaml").map { moduleFile =>
+            log.info(s"Writing buf module file to ${moduleFile.getAbsolutePath}")
+            IO.write(
+              moduleFile,
+              ModuleConfig(
+                breakingCategory.value,
+                importProtosToIgnore
+              ).asJson.asYaml.spaces2.getBytes
+            )
+            moduleFile
+          }
+          val projectBase      = baseDirectory.value
+          val bufWorkspaceFile = projectBase / "buf.work.yaml"
+          val moduleTarget     = target.value
+          val relativeSrcDirs =
+            srcModuleDirs
+              .map(srcDir => srcDir -> srcDir.relativeTo(projectBase))
+              .map {
+                case (_, Some(rd))  => rd
+                case (srcDir, None) =>
+                  // for cases of cross-module proto dependency (non-relative), we must copy the dependency to be 'local' (relative)
+                  // to this sbt module to abide by Buf's requirement that all module/workspace dependencies be relative
+                  log.info(
+                    s"Found non relative src directory ${srcDir}, copying to ${moduleTarget} to appear relative to Buf workspace"
                   )
-                }
-            }
-            .distinct
-        log.info(s"Writing buf workspace file to ${bufWorkspaceFile.getAbsolutePath}")
-        IO.write(
-          bufWorkspaceFile,
-          WorkspaceConfig(relativeSrcDirs.map(_.getPath)).asJson.asYaml.spaces2.getBytes
-        )
-        moduleFiles :+ bufWorkspaceFile
+                  val rd = copyRelativeDependency(moduleTarget, srcDir)
+                  rd.relativeTo(projectBase).getOrElse {
+                    throw new IllegalStateException(
+                      s"Copied source directory ${rd} is not relative to project base ${projectBase}"
+                    )
+                  }
+              }
+              .distinct
+          log.info(s"Writing buf workspace file to ${bufWorkspaceFile.getAbsolutePath}")
+          IO.write(
+            bufWorkspaceFile,
+            WorkspaceConfig(relativeSrcDirs.map(_.getPath)).asJson.asYaml.spaces2.getBytes
+          )
+          moduleFiles :+ bufWorkspaceFile
+        }
+
       }
-    },
+      .dependsOn(
+        generateBufFiles.?.all(
+          ScopeFilter(
+            inDependencies(ThisProject, transitive = false),
+            inConfigurations(Compile)
+          )
+        )
+      )
+      .value,
     generateBufImage := {
       if (generateBufFiles.value.isEmpty) {
         streams.value.log.debug(s"No Buf files generated, skipping Buf image generation")
