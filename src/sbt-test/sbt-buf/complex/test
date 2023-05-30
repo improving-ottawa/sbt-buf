@@ -30,6 +30,10 @@ $ exec test -f api/target/buf/buf-workingdir-image.bin
 > bufLint
 # test successful buf compat check (with no changes)
 > bufCompatCheck 0.0.1-SNAPSHOT
+# clear out virtual buf module files to test fix for race condition between bufCompatCheck and generateBufFiles
+$ exec git clean -df
+# execute bufCompatCheck to exercise race condition between bufCompatCheck and generateBufFiles
+> bufCompatCheck 0.0.1-SNAPSHOT
 # make some changes to the proto message to introduce a linting error (camel case vs snake-case), and a breaking change (field type change)
 $ exec sed -i'' 's/string another_value/int32 anotherValue/g' api/src/main/protobuf/pkg/v1/test.proto
 # should fail due to camel case variable name
