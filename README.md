@@ -6,7 +6,7 @@ Simple SBT plugin providing wrappers around a subset of [Buf](https://docs.buf.b
 
 ### Buf
 
-Has a managed dependency on [Buf](https://docs.buf.build/installation), which is resolved and downloaded from their [releases page](https://github.com/bufbuild/buf/releases) based on the type of system detected. 
+Has a managed dependency on [Buf](https://docs.buf.build/installation), which is resolved and downloaded from their [releases page](https://github.com/bufbuild/buf/releases) based on the type of system detected.
 
 This version of the plugin was tested and validated against [Buf v1.15.1](https://github.com/bufbuild/buf/releases/tag/v1.15.1).
 
@@ -19,7 +19,7 @@ This plugin depends on functionality provided by the [sbt-protoc](https://github
 Include in `project/plugins.sbt`:
 
 ```
-addSbtPlugin("com.yoppworks.sbt", "sbt-buf", "0.7.0")
+addSbtPlugin("com.yoppworks.sbt", "sbt-buf", "0.8.0")
 ```
 
 ## Tasks
@@ -43,7 +43,7 @@ Buf requires that proto files be organized into Buf primitives of modules and wo
 using simple YAML configuration files at the root of their respective directories.  Buf requires all imports/dependencies of a protofile
 to be present to build an image.  
 
-This plugin works by way of creating 'virtual' Buf modules and workspace based on the configuration of ScalaPB, namely the proto sources and dependencies configured on the sbt project (a similar approach as taken by the [buf-gradle-plugin](https://github.com/andrewparmet/buf-gradle-plugin)).  This has the effect of creating `buf.yaml` and `buf.work.yaml` in the respective source,  external sources, and workspace directories managed by sbt-protoc.  Clients should be aware of these as 'managed' files insofar as they are not intended to be edited directly or necessarily checked into source control. 
+This plugin works by way of creating 'virtual' Buf modules and workspace based on the configuration of ScalaPB, namely the proto sources and dependencies configured on the sbt project (a similar approach as taken by the [buf-gradle-plugin](https://github.com/andrewparmet/buf-gradle-plugin)).  This has the effect of creating `buf.yaml` and `buf.work.yaml` in the respective source,  external sources, and workspace directories managed by sbt-protoc.  Clients should be aware of these as 'managed' files insofar as they are not intended to be edited directly or necessarily checked into source control.
 
 For this reason, it's not straightforward to build a Buf image of an arbitrary commit in history on the fly, as the native Buf tool supports.  This would rely on an assumption that the commit in git history met all the same requirements:  had both ScalaPB and this plugin enabled and configured.
 
