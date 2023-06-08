@@ -386,7 +386,14 @@ object SbtBufPlugin extends AutoPlugin {
             log.info("Buf breaking change detection passed successfully!")
           }
       }
-    }
+    }.dependsOn(
+      generateBufFiles.?.all(
+        ScopeFilter(
+          inDependencies(ThisProject, transitive = false),
+          inConfigurations(Compile)
+        )
+      )
+    )
   }
 
   private def runBufLint(): Def.Initialize[InputTask[Unit]] = {
